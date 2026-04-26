@@ -14,7 +14,7 @@ BASE_IMAGE_PATH = "base.png"
 # --- サイドバー（表示設定と微調整） ---
 st.sidebar.title("⚙️ デザイン設定")
 
-# 太字設定（チェックボックスで選択可能に）
+# 太字設定
 st.sidebar.subheader("【太字設定】")
 is_bold_title = st.sidebar.checkbox("タイトルを太字にする", value=True)
 is_bold_body = st.sidebar.checkbox("本文を太字にする", value=False)
@@ -23,7 +23,7 @@ is_bold_footer = st.sidebar.checkbox("フッターを太字にする", value=Tru
 # 位置・サイズの微調整（アコーディオンに隠してスッキリさせる）
 with st.sidebar.expander("位置・サイズの微調整（通常は不要）"):
     size_title = st.slider("タイトル文字サイズ", 50, 150, 85)
-    y_title = st.slider("タイトル上下位置 (Y)", 50, 600, 180) # 重なり防止のため少し上に修正
+    y_title = st.slider("タイトル上下位置 (Y)", 50, 600, 180)
     size_body = st.slider("本文文字サイズ", 30, 100, 48)
     y_body_offset = st.slider("本文位置の微調整", -500, 500, 0)
     size_footer = st.slider("フッター文字サイズ", 30, 100, 55)
@@ -43,7 +43,7 @@ with col1:
 def draw_styled_text(draw_obj, xy, text, font, fill, align, spacing, is_bold):
     x, y = xy
     if is_bold:
-        # 疑似ボールド（太さ2.5px固定で一貫性を出す）
+        # 疑似ボールド（太さ2.5px固定）
         thickness = 2.5
         for degrees in range(0, 360, 45):
             dx = thickness * math.cos(math.radians(degrees))
@@ -72,13 +72,13 @@ def create_preview_image():
     bbox_f = draw.multiline_textbbox((0, 0), footer_input, font=font_f, align="center", spacing=20)
     draw_styled_text(draw, ((W-(bbox_f[2]-bbox_f[0]))/2-bbox_f[0], y_footer), footer_input, font_f, (255,255,255,255), "center", 20, is_bold_footer)
 
-    # 3. 本文
+    # 3. 本文 (エラー箇所を修正済み)
     bbox_b = draw.multiline_textbbox((0, 0), body_input, font=font_b, align="left", spacing=30)
     body_h = bbox_b[3] - bbox_b[1]
     title_bottom = y_title + (bbox_t[3] - bbox_t[1])
-    # 本文の垂直位置を自動計算（タイトルとフッターの間の中央）
     y_b = title_bottom + (y_footer - title_bottom - body_h) / 2 - bbox_b[1] + y_body_offset
-    draw_styled_text(draw, ((W-(bbox_b[2]-bbox_b[0]))/2-bbox_b[0], y_b), body_input, font=font_b, (255,255,255,255), "left", 30, is_bold_body)
+    # ここから「font=」を削除して修正しました
+    draw_styled_text(draw, ((W-(bbox_b[2]-bbox_b[0]))/2-bbox_b[0], y_b), body_input, font_b, (255,255,255,255), "left", 30, is_bold_body)
 
     return img, None
 
