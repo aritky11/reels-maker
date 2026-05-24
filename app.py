@@ -8,6 +8,11 @@ st.set_page_config(page_title="AIリール生成ツール", layout="wide")
 FONT_PATH = "font.ttf" 
 BASE_IMAGE_PATH = "base.png"
 
+# --- 修正の最重要ポイント: リセット用のカウンター（Key）の管理 ---
+# ボタンが押されたらこの数値を増やすことで、Streamlitにスライダーを「新品」に交換させます
+if "reset_counter" not in st.session_state:
+    st.session_state["reset_counter"] = 0
+
 # --- サイドバー（デザイン・レイアウト調整） ---
 st.sidebar.title("⚙️ デザイン設定")
 
@@ -21,38 +26,39 @@ bold_strength = st.sidebar.slider("太字の強度", 1.0, 3.0, 1.5, step=0.1)
 # 位置・サイズ・行間の微調整
 with st.sidebar.expander("位置・サイズ・行間の微調整", expanded=True):
     
+    # 動的に一意のキーを作ることで、ボタンを押した瞬間にスライダーを完全初期化します
+    run_id = st.session_state["reset_counter"]
+
     st.subheader("① タイトル設定")
-    # 修正点①: エラーの原因となるsession_stateの連動を完全に廃止し、純粋なスライダーに戻します
-    size_title = st.slider("タイトル文字サイズ", 30, 150, value=80, key="s_title_plain")
-    spacing_title = st.slider("タイトルの行間", 0, 50, value=10, key="sp_title_plain")
-    y_title = st.slider("タイトル上下位置 (Y)", 50, 500, value=160, key="y_title_plain")
-    x_title_offset = st.slider("タイトル左右のズレ", -500, 500, value=0, key="x_title_plain")
+    size_title = st.slider("タイトル文字サイズ", 30, 150, value=80, key=f"s_title_{run_id}")
+    spacing_title = st.slider("タイトルの行間", 0, 50, value=10, key=f"sp_title_{run_id}")
+    y_title = st.slider("タイトル上下位置 (Y)", 50, 500, value=160, key=f"y_title_{run_id}")
+    x_title_offset = st.slider("タイトル左右のズレ", -500, 500, value=0, key=f"x_title_{run_id}")
     
-    # 修正点②: 押した瞬間にページのURLパラメータに「リセット命令」を出してページ全体を初期化する
     if st.button("🔄 タイトルを中央基準に戻す", use_container_width=True):
-        st.query_params.clear()
+        st.session_state["reset_counter"] += 1
         st.rerun()
 
     st.markdown("---")
     st.subheader("② 本文設定")
-    size_body = st.slider("本文文字サイズ", 20, 100, value=45, key="s_body_plain")
-    spacing_body = st.slider("本文の行間", 10, 100, value=30, key="sp_body_plain")
-    y_body_offset = st.slider("本文上下のズレ (中央基準)", -500, 500, value=0, key="y_body_plain")
-    x_body_offset = st.slider("本文左右のズレ", -500, 500, value=0, key="x_body_plain")
+    size_body = st.slider("本文文字サイズ", 20, 100, value=45, key=f"s_body_{run_id}")
+    spacing_body = st.slider("本文の行間", 10, 100, value=30, key=f"sp_body_{run_id}")
+    y_body_offset = st.slider("本文上下のズレ (中央基準)", -500, 500, value=0, key=f"y_body_{run_id}")
+    x_body_offset = st.slider("本文左右のズレ", -500, 500, value=0, key=f"x_body_{run_id}")
     
     if st.button("🔄 本文を中央基準に戻す", use_container_width=True):
-        st.query_params.clear()
+        st.session_state["reset_counter"] += 1
         st.rerun()
 
     st.markdown("---")
     st.subheader("③ フッター設定")
-    size_footer = st.slider("フッター文字サイズ", 20, 100, value=40, key="s_footer_plain")
-    spacing_footer = st.slider("フッターの行間", 0, 50, value=10, key="sp_footer_plain")
-    y_footer = st.slider("フッター上下位置 (Y)", 1000, 1900, value=1650, key="y_footer_plain")
-    x_footer_offset = st.slider("フッター左右のズレ", -500, 500, value=0, key="x_footer_plain")
+    size_footer = st.slider("フッター文字サイズ", 20, 100, value=40, key=f"s_footer_{run_id}")
+    spacing_footer = st.slider("フッターの行間", 0, 50, value=10, key=f"sp_footer_{run_id}")
+    y_footer = st.slider("フッター上下位置 (Y)", 1000, 1900, value=1650, key=f"y_footer_{run_id}")
+    x_footer_offset = st.slider("フッター左右のズレ", -500, 500, value=0, key=f"x_footer_{run_id}")
     
     if st.button("🔄 フッターを中央基準に戻す", use_container_width=True):
-        st.query_params.clear()
+        st.session_state["reset_counter"] += 1
         st.rerun()
 
 # --- メイン画面 ---
