@@ -8,23 +8,6 @@ st.set_page_config(page_title="AIリール生成ツール", layout="wide")
 FONT_PATH = "font.ttf" 
 BASE_IMAGE_PATH = "base.png"
 
-# --- セッション状態（初期値・リセット用）の確実な管理 ---
-# スライダーと直接同期させるための初期値をセットします
-if "s_title" not in st.session_state: st.session_state.s_title = 80
-if "sp_title" not in st.session_state: st.session_state.sp_title = 10
-if "y_title" not in st.session_state: st.session_state.y_title = 160
-if "x_title" not in st.session_state: st.session_state.x_title = 0
-
-if "s_body" not in st.session_state: st.session_state.s_body = 45
-if "sp_body" not in st.session_state: st.session_state.sp_body = 30
-if "y_body" not in st.session_state: st.session_state.y_body = 0
-if "x_body" not in st.session_state: st.session_state.x_body = 0
-
-if "s_footer" not in st.session_state: st.session_state.s_footer = 40
-if "sp_footer" not in st.session_state: st.session_state.sp_footer = 10
-if "y_footer" not in st.session_state: st.session_state.y_footer = 1650
-if "x_footer" not in st.session_state: st.session_state.x_footer = 0
-
 # --- サイドバー（デザイン・レイアウト調整） ---
 st.sidebar.title("⚙️ デザイン設定")
 
@@ -39,41 +22,58 @@ bold_strength = st.sidebar.slider("太字の強度", 1.0, 3.0, 1.5, step=0.1)
 with st.sidebar.expander("位置・サイズ・行間の微調整", expanded=True):
     
     st.subheader("① タイトル設定")
-    size_title = st.slider("タイトル文字サイズ", 30, 150, key="s_title")
-    spacing_title = st.slider("タイトルの行間", 0, 50, key="sp_title")
-    y_title = st.slider("タイトル上下位置 (Y)", 50, 500, key="y_title")
-    x_title_offset = st.slider("タイトル左右のズレ", -500, 500, key="x_title")
+    # APIエラーを完全に防ぐため、sliderの初期値（value）にSession Stateを直接仕込みます
+    size_title = st.slider("タイトル文字サイズ", 30, 150, value=st.session_state.get("s_title", 80), key="s_title_slider")
+    spacing_title = st.slider("タイトルの行間", 0, 50, value=st.session_state.get("sp_title", 10), key="sp_title_slider")
+    y_title = st.slider("タイトル上下位置 (Y)", 50, 500, value=st.session_state.get("y_title", 160), key="y_title_slider")
+    x_title_offset = st.slider("タイトル左右のズレ", -500, 500, value=st.session_state.get("x_title", 0), key="x_title_slider")
+    
     if st.button("🔄 タイトルを中央基準に戻す", use_container_width=True):
-        st.session_state.s_title = 80
-        st.session_state.sp_title = 10
-        st.session_state.y_title = 160
-        st.session_state.x_title = 0
+        st.session_state["s_title"] = 80
+        st.session_state["sp_title"] = 10
+        st.session_state["y_title"] = 160
+        st.session_state["x_title"] = 0
+        # スライダー側の内部状態もクリア
+        st.session_state["s_title_slider"] = 80
+        st.session_state["sp_title_slider"] = 10
+        st.session_state["y_title_slider"] = 160
+        st.session_state["x_title_slider"] = 0
         st.rerun()
 
     st.markdown("---")
     st.subheader("② 本文設定")
-    size_body = st.slider("本文文字サイズ", 20, 100, key="s_body")
-    spacing_body = st.slider("本文の行間", 10, 100, key="sp_body")
-    y_body_offset = st.slider("本文上下のズレ (中央基準)", -500, 500, key="y_body")
-    x_body_offset = st.slider("本文左右のズレ", -500, 500, key="x_body")
+    size_body = st.slider("本文文字サイズ", 20, 100, value=st.session_state.get("s_body", 45), key="s_body_slider")
+    spacing_body = st.slider("本文の行間", 10, 100, value=st.session_state.get("sp_body", 30), key="sp_body_slider")
+    y_body_offset = st.slider("本文上下のズレ (中央基準)", -500, 500, value=st.session_state.get("y_body", 0), key="y_body_slider")
+    x_body_offset = st.slider("本文左右のズレ", -500, 500, value=st.session_state.get("x_body", 0), key="x_body_slider")
+    
     if st.button("🔄 本文を中央基準に戻す", use_container_width=True):
-        st.session_state.s_body = 45
-        st.session_state.sp_body = 30
-        st.session_state.y_body = 0
-        st.session_state.x_body = 0
+        st.session_state["s_body"] = 45
+        st.session_state["sp_body"] = 30
+        st.session_state["y_body"] = 0
+        st.session_state["x_body"] = 0
+        st.session_state["s_body_slider"] = 45
+        st.session_state["sp_body_slider"] = 30
+        st.session_state["y_body_slider"] = 0
+        st.session_state["x_body_slider"] = 0
         st.rerun()
 
     st.markdown("---")
     st.subheader("③ フッター設定")
-    size_footer = st.slider("フッター文字サイズ", 20, 100, key="s_footer")
-    spacing_footer = st.slider("フッターの行間", 0, 50, key="sp_footer")
-    y_footer = st.slider("フッター上下位置 (Y)", 1000, 1900, key="y_footer")
-    x_footer_offset = st.slider("フッター左右のズレ", -500, 500, key="x_footer")
+    size_footer = st.slider("フッター文字サイズ", 20, 100, value=st.session_state.get("s_footer", 40), key="s_footer_slider")
+    spacing_footer = st.slider("フッターの行間", 0, 50, value=st.session_state.get("sp_footer", 10), key="sp_footer_slider")
+    y_footer = st.slider("フッター上下位置 (Y)", 1000, 1900, value=st.session_state.get("y_footer", 1650), key="y_footer_slider")
+    x_footer_offset = st.slider("フッター左右のズレ", -500, 500, value=st.session_state.get("x_footer", 0), key="x_footer_slider")
+    
     if st.button("🔄 フッターを中央基準に戻す", use_container_width=True):
-        st.session_state.s_footer = 40
-        st.session_state.sp_footer = 10
-        st.session_state.y_footer = 1650
-        st.session_state.x_footer = 0
+        st.session_state["s_footer"] = 40
+        st.session_state["sp_footer"] = 10
+        st.session_state["y_footer"] = 1650
+        st.session_state["x_footer"] = 0
+        st.session_state["s_footer_slider"] = 40
+        st.session_state["sp_footer_slider"] = 10
+        st.session_state["y_footer_slider"] = 1650
+        st.session_state["x_footer_slider"] = 0
         st.rerun()
 
 # --- メイン画面 ---
