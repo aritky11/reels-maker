@@ -5,13 +5,11 @@ import io
 # --- 基本設定 ---
 st.set_page_config(page_title="AIリール生成ツール", layout="wide")
 
-# フォントパスの設定
 FONT_PATH = "font.ttf" 
-# 背景画像のパス設定
 BASE_IMAGE_PATH = "base.png"
 
-# --- セッション状態（初期値・リセット用）の管理 ---
-# ボタン押下時に値を強制的に書き換えるため、StreamlitのSession Stateを利用します
+# --- セッション状態（初期値・リセット用）の確実な管理 ---
+# スライダーと直接同期させるための初期値をセットします
 if "s_title" not in st.session_state: st.session_state.s_title = 80
 if "sp_title" not in st.session_state: st.session_state.sp_title = 10
 if "y_title" not in st.session_state: st.session_state.y_title = 160
@@ -26,7 +24,6 @@ if "s_footer" not in st.session_state: st.session_state.s_footer = 40
 if "sp_footer" not in st.session_state: st.session_state.sp_footer = 10
 if "y_footer" not in st.session_state: st.session_state.y_footer = 1650
 if "x_footer" not in st.session_state: st.session_state.x_footer = 0
-
 
 # --- サイドバー（デザイン・レイアウト調整） ---
 st.sidebar.title("⚙️ デザイン設定")
@@ -82,7 +79,6 @@ with st.sidebar.expander("位置・サイズ・行間の微調整", expanded=Tru
 # --- メイン画面 ---
 st.title("🎬 AIリール動画自動生成ツール")
 
-# 画面を左右の2カラムに分ける
 col1, col2 = st.columns([1, 1.2])
 
 # --- 入力エリア（左カラム） ---
@@ -104,11 +100,9 @@ def draw_text_with_bold(draw, position, text, font, fill, align, spacing, is_bol
 
 # --- 画像生成処理 ---
 def create_preview_image():
-    # base.png の読み込みを試みる
     try:
         img = Image.open(BASE_IMAGE_PATH).convert("RGBA")
     except FileNotFoundError:
-        # 見つからない場合は安全のため純黒背景を自動生成
         img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 255))
         
     draw = ImageDraw.Draw(img)
