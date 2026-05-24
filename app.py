@@ -10,6 +10,24 @@ FONT_PATH = "font.ttf"
 # 背景画像のパス設定
 BASE_IMAGE_PATH = "base.png"
 
+# --- セッション状態（初期値・リセット用）の管理 ---
+# ボタン押下時に値を強制的に書き換えるため、StreamlitのSession Stateを利用します
+if "s_title" not in st.session_state: st.session_state.s_title = 80
+if "sp_title" not in st.session_state: st.session_state.sp_title = 10
+if "y_title" not in st.session_state: st.session_state.y_title = 160
+if "x_title" not in st.session_state: st.session_state.x_title = 0
+
+if "s_body" not in st.session_state: st.session_state.s_body = 45
+if "sp_body" not in st.session_state: st.session_state.sp_body = 30
+if "y_body" not in st.session_state: st.session_state.y_body = 0
+if "x_body" not in st.session_state: st.session_state.x_body = 0
+
+if "s_footer" not in st.session_state: st.session_state.s_footer = 40
+if "sp_footer" not in st.session_state: st.session_state.sp_footer = 10
+if "y_footer" not in st.session_state: st.session_state.y_footer = 1650
+if "x_footer" not in st.session_state: st.session_state.x_footer = 0
+
+
 # --- サイドバー（デザイン・レイアウト調整） ---
 st.sidebar.title("⚙️ デザイン設定")
 
@@ -22,23 +40,44 @@ bold_strength = st.sidebar.slider("太字の強度", 1.0, 3.0, 1.5, step=0.1)
 
 # 位置・サイズ・行間の微調整
 with st.sidebar.expander("位置・サイズ・行間の微調整", expanded=True):
+    
     st.subheader("① タイトル設定")
-    size_title = st.sidebar.slider("タイトル文字サイズ", 30, 150, 80, key="s_title")
-    spacing_title = st.sidebar.slider("タイトルの行間", 0, 50, 10, key="sp_title")
-    y_title = st.sidebar.slider("タイトル上下位置 (Y)", 50, 500, 160, key="y_title")
-    x_title_offset = st.sidebar.slider("タイトル左右のズレ", -500, 500, 0, key="x_title")
+    size_title = st.slider("タイトル文字サイズ", 30, 150, key="s_title")
+    spacing_title = st.slider("タイトルの行間", 0, 50, key="sp_title")
+    y_title = st.slider("タイトル上下位置 (Y)", 50, 500, key="y_title")
+    x_title_offset = st.slider("タイトル左右のズレ", -500, 500, key="x_title")
+    if st.button("🔄 タイトルを中央基準に戻す", use_container_width=True):
+        st.session_state.s_title = 80
+        st.session_state.sp_title = 10
+        st.session_state.y_title = 160
+        st.session_state.x_title = 0
+        st.rerun()
 
+    st.markdown("---")
     st.subheader("② 本文設定")
-    size_body = st.sidebar.slider("本文文字サイズ", 20, 100, 45, key="s_body")
-    spacing_body = st.sidebar.slider("本文の行間", 10, 100, 30, key="sp_body")
-    y_body_offset = st.sidebar.slider("本文上下のズレ (中央基準)", -500, 500, 0, key="y_body")
-    x_body_offset = st.sidebar.slider("本文左右のズレ", -500, 500, 0, key="x_body")
+    size_body = st.slider("本文文字サイズ", 20, 100, key="s_body")
+    spacing_body = st.slider("本文の行間", 10, 100, key="sp_body")
+    y_body_offset = st.slider("本文上下のズレ (中央基準)", -500, 500, key="y_body")
+    x_body_offset = st.slider("本文左右のズレ", -500, 500, key="x_body")
+    if st.button("🔄 本文を中央基準に戻す", use_container_width=True):
+        st.session_state.s_body = 45
+        st.session_state.sp_body = 30
+        st.session_state.y_body = 0
+        st.session_state.x_body = 0
+        st.rerun()
 
+    st.markdown("---")
     st.subheader("③ フッター設定")
-    size_footer = st.sidebar.slider("フッター文字サイズ", 20, 100, 40, key="s_footer")
-    spacing_footer = st.sidebar.slider("フッターの行間", 0, 50, 10, key="sp_footer")
-    y_footer = st.sidebar.slider("フッター上下位置 (Y)", 1000, 1900, 1650, key="y_footer")
-    x_footer_offset = st.sidebar.slider("フッター左右のズレ", -500, 500, 0, key="x_footer")
+    size_footer = st.slider("フッター文字サイズ", 20, 100, key="s_footer")
+    spacing_footer = st.slider("フッターの行間", 0, 50, key="sp_footer")
+    y_footer = st.slider("フッター上下位置 (Y)", 1000, 1900, key="y_footer")
+    x_footer_offset = st.slider("フッター左右のズレ", -500, 500, key="x_footer")
+    if st.button("🔄 フッターを中央基準に戻す", use_container_width=True):
+        st.session_state.s_footer = 40
+        st.session_state.sp_footer = 10
+        st.session_state.y_footer = 1650
+        st.session_state.x_footer = 0
+        st.rerun()
 
 # --- メイン画面 ---
 st.title("🎬 AIリール動画自動生成ツール")
@@ -65,11 +104,11 @@ def draw_text_with_bold(draw, position, text, font, fill, align, spacing, is_bol
 
 # --- 画像生成処理 ---
 def create_preview_image():
-    # ★安全設計：まずベース画像（base.png）の読み込みにトライする
+    # base.png の読み込みを試みる
     try:
         img = Image.open(BASE_IMAGE_PATH).convert("RGBA")
     except FileNotFoundError:
-        # もしbase.pngがGitHub上に見つからなくても、自動で「純黒背景」を作ってエラーを完全に回避する
+        # 見つからない場合は安全のため純黒背景を自動生成
         img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 255))
         
     draw = ImageDraw.Draw(img)
