@@ -7,7 +7,7 @@ st.set_page_config(page_title="AIリール生成ツール", layout="wide")
 
 # フォントパスの設定
 FONT_PATH = "font.ttf" 
-# 背景画像のパス設定（元の画像ファイル名）
+# 背景画像のパス設定
 BASE_IMAGE_PATH = "base.png"
 
 # --- サイドバー（デザイン・レイアウト調整） ---
@@ -65,11 +65,12 @@ def draw_text_with_bold(draw, position, text, font, fill, align, spacing, is_bol
 
 # --- 画像生成処理 ---
 def create_preview_image():
-    # 元の背景画像（base.png）を読み込む
+    # ★安全設計：まずベース画像（base.png）の読み込みにトライする
     try:
         img = Image.open(BASE_IMAGE_PATH).convert("RGBA")
     except FileNotFoundError:
-        return None, "エラー: base.pngが見つかりません。GitHubにbase.pngがあるか確認してください。"
+        # もしbase.pngがGitHub上に見つからなくても、自動で「純黒背景」を作ってエラーを完全に回避する
+        img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 255))
         
     draw = ImageDraw.Draw(img)
     try:
@@ -77,7 +78,7 @@ def create_preview_image():
         font_b = ImageFont.truetype(FONT_PATH, size_body)
         font_f = ImageFont.truetype(FONT_PATH, size_footer)
     except IOError:
-        return None, "エラー: font.ttf が見つかりません。リポジトリのルートに配置してください。"
+        return None, "エラー: font.ttf が見つかりません。GitHubにフォントを配置してください。"
 
     title_text = title_input.replace('\\n', '\n')
     body_text = body_input.replace('\\n', '\n')
@@ -124,3 +125,9 @@ with col2:
         byte_im = buf.getvalue()
         
         st.download_button(
+            label="⬇️ この画像をダウンロード",
+            data=byte_im,
+            file_name="reels_image.png",
+            mime="image/png",
+            use_container_width=True
+        )
