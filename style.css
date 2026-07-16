@@ -1,0 +1,300 @@
+:root {
+  --brand-green: #17a34a;
+  --brand-pink: #E1306C;
+  --brand-pink-dark: #c72a5e;
+  --sidebar-bg: #f0f2f6;
+  --border-color: #d9dce1;
+  --text-color: #1a1a1a;
+  --muted-color: #6b7280;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: "Hiragino Sans", "Yu Gothic UI", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--text-color);
+  background: #ffffff;
+}
+
+.topbar {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.layout {
+  display: flex;
+  min-height: calc(100vh - 64px);
+}
+
+/* ============ サイドバー ============ */
+.sidebar {
+  width: 320px;
+  min-width: 260px;
+  flex-shrink: 0;
+  background: var(--sidebar-bg);
+  padding: 1.25rem 1.25rem 3rem;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+}
+
+.sidebar h2 {
+  font-size: 1.15rem;
+  margin: 0 0 1rem;
+}
+
+.panel {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+}
+
+.panel h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.6rem;
+  color: var(--text-color);
+}
+
+.panel h4 {
+  font-size: 0.9rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: var(--muted-color);
+  margin: 0.2rem 0 0.8rem;
+  line-height: 1.4;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.slider-row {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.9rem;
+  color: var(--text-color);
+}
+
+.slider-with-value {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.3rem;
+}
+
+.slider-with-value input[type="range"] {
+  flex: 1;
+  accent-color: var(--brand-green);
+}
+
+.slider-with-value .value {
+  min-width: 42px;
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--muted-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.reset-btn {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  margin: 0.4rem 0 0.2rem;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.reset-btn:hover {
+  background: #e9ebf0;
+}
+
+.sidebar hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1rem 0;
+}
+
+.panel summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+/* ============ メインエリア ============ */
+.main {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  overflow-x: hidden;
+}
+
+.columns {
+  display: flex;
+  gap: 2.5rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.col {
+  flex: 1 1 380px;
+  min-width: 320px;
+}
+
+.col h2 {
+  font-size: 1.2rem;
+  margin: 0 0 1rem;
+}
+
+.text-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 1rem 0 0.35rem;
+}
+
+.col-input textarea {
+  width: 100%;
+  font-size: 0.95rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.col-input textarea:focus {
+  outline: 2px solid var(--brand-green);
+  outline-offset: -1px;
+}
+
+/* ============ プレビューエリア（レスポンシブ・等倍縮小） ============ */
+.col-preview {
+  flex: 1 1 420px;
+  max-width: 560px;
+}
+
+.preview-frame {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  aspect-ratio: 1080 / 1920;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.28);
+  background: #17a34a;
+}
+
+#previewCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1080 / 1920;
+}
+
+.fit-notice {
+  max-width: 420px;
+  margin: 0.75rem auto 0;
+  padding: 0.55rem 0.8rem;
+  background: #e8f4ff;
+  border: 1px solid #b6e0ff;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #0b5b9c;
+  text-align: center;
+}
+
+.export-heading {
+  max-width: 420px;
+  margin: 1.5rem auto 0.6rem;
+  font-size: 1.05rem;
+}
+
+.download-btn {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0.85rem 0;
+  background: var(--brand-pink);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1.02rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.download-btn:hover {
+  background: var(--brand-pink-dark);
+}
+
+.download-btn:disabled {
+  background: #d1a3b4;
+  cursor: not-allowed;
+}
+
+.caption {
+  max-width: 420px;
+  margin: 0.6rem auto 0;
+  font-size: 0.78rem;
+  color: var(--muted-color);
+  text-align: center;
+}
+
+/* ============ レスポンシブ対応 ============ */
+@media (max-width: 900px) {
+  .layout {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    max-height: none;
+  }
+  .columns {
+    flex-direction: column;
+  }
+  .col-preview {
+    max-width: 100%;
+  }
+  .preview-frame {
+    max-width: 380px;
+  }
+}
+
+@media (max-width: 480px) {
+  .main {
+    padding: 1rem;
+  }
+  .topbar h1 {
+    font-size: 1.25rem;
+  }
+  .preview-frame {
+    max-width: 100%;
+  }
+}

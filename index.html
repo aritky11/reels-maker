@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🎬 AIリール動画自動生成ツール</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <h1>🎬 AIリール動画自動生成ツール</h1>
+</header>
+
+<div class="layout">
+
+  <!-- ============ サイドバー：デザイン設定 ============ -->
+  <aside class="sidebar">
+    <h2>⚙️ デザイン設定</h2>
+
+    <section class="panel">
+      <h3>【太字・太さ設定】</h3>
+      <label class="checkbox-row">
+        <input type="checkbox" id="boldTitle" checked />
+        タイトルを太字にする
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="boldBody" />
+        本文を太字にする
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="boldFooter" checked />
+        フッターを太字にする
+      </label>
+
+      <label class="slider-row">
+        太字の強度
+        <div class="slider-with-value">
+          <input type="range" id="boldStrength" min="1.0" max="3.0" step="0.1" value="1.5" />
+          <span class="value" id="boldStrengthVal">1.5</span>
+        </div>
+      </label>
+    </section>
+
+    <section class="panel">
+      <h3>【自動フォントサイズ調整】</h3>
+      <label class="checkbox-row">
+        <input type="checkbox" id="autoFitEnabled" checked />
+        はみ出し防止（スマート・リサイズ）を有効にする
+      </label>
+      <p class="hint">文字数が多い場合、枠内に収まるようフォントサイズと行間を自動で縮小します。</p>
+
+      <label class="slider-row">
+        自動縮小の下限（元サイズ比 %）
+        <div class="slider-with-value">
+          <input type="range" id="minScalePercent" min="30" max="100" step="5" value="45" />
+          <span class="value" id="minScalePercentVal">45%</span>
+        </div>
+      </label>
+    </section>
+
+    <details class="panel" open>
+      <summary><h3 style="display:inline">位置・サイズ・行間の微調整</h3></summary>
+
+      <h4>① タイトル設定</h4>
+      <label class="slider-row">
+        タイトル文字サイズ
+        <div class="slider-with-value">
+          <input type="range" id="sizeTitle" min="30" max="150" step="1" value="80" />
+          <span class="value" id="sizeTitleVal">80</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        タイトルの行間
+        <div class="slider-with-value">
+          <input type="range" id="spacingTitle" min="0" max="50" step="1" value="10" />
+          <span class="value" id="spacingTitleVal">10</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        タイトル上下位置 (Y)
+        <div class="slider-with-value">
+          <input type="range" id="yTitle" min="50" max="500" step="1" value="160" />
+          <span class="value" id="yTitleVal">160</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        タイトル左右のズレ
+        <div class="slider-with-value">
+          <input type="range" id="xTitleOffset" min="-500" max="500" step="1" value="0" />
+          <span class="value" id="xTitleOffsetVal">0</span>
+        </div>
+      </label>
+      <button class="reset-btn" id="resetTitleBtn">🔄 タイトルを中央基準に戻す</button>
+
+      <hr />
+
+      <h4>② 本文設定</h4>
+      <label class="slider-row">
+        本文文字サイズ
+        <div class="slider-with-value">
+          <input type="range" id="sizeBody" min="20" max="100" step="1" value="45" />
+          <span class="value" id="sizeBodyVal">45</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        本文の行間
+        <div class="slider-with-value">
+          <input type="range" id="spacingBody" min="10" max="100" step="1" value="30" />
+          <span class="value" id="spacingBodyVal">30</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        本文上下のズレ（中央基準）
+        <div class="slider-with-value">
+          <input type="range" id="yBodyOffset" min="-500" max="500" step="1" value="0" />
+          <span class="value" id="yBodyOffsetVal">0</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        本文左右のズレ
+        <div class="slider-with-value">
+          <input type="range" id="xBodyOffset" min="-500" max="500" step="1" value="0" />
+          <span class="value" id="xBodyOffsetVal">0</span>
+        </div>
+      </label>
+      <button class="reset-btn" id="resetBodyBtn">🔄 本文を中央基準に戻す</button>
+
+      <hr />
+
+      <h4>③ フッター設定</h4>
+      <label class="slider-row">
+        フッター文字サイズ
+        <div class="slider-with-value">
+          <input type="range" id="sizeFooter" min="20" max="100" step="1" value="40" />
+          <span class="value" id="sizeFooterVal">40</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        フッターの行間
+        <div class="slider-with-value">
+          <input type="range" id="spacingFooter" min="0" max="50" step="1" value="10" />
+          <span class="value" id="spacingFooterVal">10</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        フッター上下位置 (Y)
+        <div class="slider-with-value">
+          <input type="range" id="yFooter" min="1000" max="1900" step="1" value="1650" />
+          <span class="value" id="yFooterVal">1650</span>
+        </div>
+      </label>
+      <label class="slider-row">
+        フッター左右のズレ
+        <div class="slider-with-value">
+          <input type="range" id="xFooterOffset" min="-500" max="500" step="1" value="0" />
+          <span class="value" id="xFooterOffsetVal">0</span>
+        </div>
+      </label>
+      <button class="reset-btn" id="resetFooterBtn">🔄 フッターを中央基準に戻す</button>
+    </details>
+  </aside>
+
+  <!-- ============ メインエリア ============ -->
+  <main class="main">
+    <div class="columns">
+
+      <!-- 入力エリア -->
+      <div class="col col-input">
+        <h2>📝 テキスト入力</h2>
+
+        <label class="text-label" for="titleInput">① タイトル</label>
+        <textarea id="titleInput" rows="3">即レスする女が、
+男に飽きられる理由。</textarea>
+
+        <label class="text-label" for="bodyInput">② 本文</label>
+        <textarea id="bodyInput" rows="9">・即レスは「いつでも手に入る」という合図よ。
+・連絡を待つだけの女に、男は価値を感じない。
+・「俺に夢中だな」と確信されたら、そこで終了よ。
+・安心感を与えた瞬間、男は貴女を追うのをやめる。
+・画面にかじりつく暇があるなら、自分の生活を送りなさい。
+・追われたいなら、返信の速度を半分にしなさい。</textarea>
+
+        <label class="text-label" for="footerInput">③ フッター</label>
+        <textarea id="footerInput" rows="3">※本気で追われたい女以外は
+ 今すぐこの画面を閉じなさい。</textarea>
+      </div>
+
+      <!-- プレビューエリア -->
+      <div class="col col-preview">
+        <h2>👀 プレビュー</h2>
+
+        <div class="preview-frame">
+          <canvas id="previewCanvas" width="1080" height="1920"></canvas>
+        </div>
+
+        <div id="fitNotice" class="fit-notice" hidden></div>
+
+        <h3 class="export-heading">📤 画像を書き出す</h3>
+        <button id="downloadBtn" class="download-btn">
+          ⬇️ このページを画像として保存（PNG / 1080×1920）
+        </button>
+        <p class="caption">※ Instagramリール／ストーリーズ推奨サイズ（1080×1920px）の高解像度PNGで書き出されます。</p>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
