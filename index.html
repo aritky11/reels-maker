@@ -37,10 +37,11 @@
       <label class="slider-row">
         太字の強度
         <div class="slider-with-value">
-          <input type="range" id="boldStrength" min="1.0" max="3.0" step="0.1" value="1.5" />
-          <span class="value" id="boldStrengthVal">1.5</span>
+          <input type="range" id="boldStrength" min="0" max="3.0" step="0.1" value="0.8" />
+          <span class="value" id="boldStrengthVal">0.8</span>
         </div>
       </label>
+      <p class="hint">値を小さくするほど、太字が薄く・細くなります（0＝太字効果なし）。</p>
     </section>
 
     <section class="panel">
@@ -97,6 +98,21 @@
       <hr />
 
       <h4>② 本文設定</h4>
+
+      <label class="slider-row">
+        文字揃え
+        <div class="align-row">
+          <label class="radio-inline">
+            <input type="radio" name="bodyAlign" id="bodyAlignCenter" value="center" checked />
+            中央揃え
+          </label>
+          <label class="radio-inline">
+            <input type="radio" name="bodyAlign" id="bodyAlignLeft" value="left" />
+            左揃え
+          </label>
+        </div>
+      </label>
+
       <label class="slider-row">
         本文文字サイズ
         <div class="slider-with-value">
@@ -105,12 +121,21 @@
         </div>
       </label>
       <label class="slider-row">
-        本文の行間
+        本文の行間（同じグループ内）
         <div class="slider-with-value">
-          <input type="range" id="spacingBody" min="10" max="100" step="1" value="30" />
-          <span class="value" id="spacingBodyVal">30</span>
+          <input type="range" id="spacingBody" min="-30" max="100" step="1" value="12" />
+          <span class="value" id="spacingBodyVal">12</span>
         </div>
       </label>
+      <p class="hint">値を小さく（マイナスも可）すると行間が狭まります。</p>
+      <label class="slider-row">
+        段落間の行間（空行で区切ったグループ間）
+        <div class="slider-with-value">
+          <input type="range" id="paragraphSpacingBody" min="0" max="150" step="1" value="55" />
+          <span class="value" id="paragraphSpacingBodyVal">55</span>
+        </div>
+      </label>
+      <p class="hint">本文中で空行（改行を2回）を入れると、そこだけこの間隔になります。</p>
       <label class="slider-row">
         本文上下のズレ（中央基準）
         <div class="slider-with-value">
@@ -174,13 +199,15 @@
         <textarea id="titleInput" rows="3">即レスする女が、
 男に飽きられる理由。</textarea>
 
-        <label class="text-label" for="bodyInput">② 本文</label>
-        <textarea id="bodyInput" rows="9">・即レスは「いつでも手に入る」という合図よ。
-・連絡を待つだけの女に、男は価値を感じない。
+        <label class="text-label" for="bodyInput">② 本文（空行を入れるとグループ分けできます）</label>
+        <textarea id="bodyInput" rows="12">・即レスは「いつでも手に入る」という合図よ。
+→連絡を待つだけの女に、男は価値を感じない。
+
 ・「俺に夢中だな」と確信されたら、そこで終了よ。
-・安心感を与えた瞬間、男は貴女を追うのをやめる。
-・画面にかじりつく暇があるなら、自分の生活を送りなさい。
-・追われたいなら、返信の速度を半分にしなさい。</textarea>
+→安心感を与えた瞬間、男は貴女を追うのをやめる。
+
+・画面にかじりつく暇があるなら、
+→自分の生活を送りなさい。</textarea>
 
         <label class="text-label" for="footerInput">③ フッター</label>
         <textarea id="footerInput" rows="3">※本気で追われたい女以外は

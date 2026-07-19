@@ -38,8 +38,11 @@ const inputs = {
 
   sizeBody: el("sizeBody"),
   spacingBody: el("spacingBody"),
+  paragraphSpacingBody: el("paragraphSpacingBody"),
   yBodyOffset: el("yBodyOffset"),
   xBodyOffset: el("xBodyOffset"),
+  bodyAlignCenter: el("bodyAlignCenter"),
+  bodyAlignLeft: el("bodyAlignLeft"),
 
   sizeFooter: el("sizeFooter"),
   spacingFooter: el("spacingFooter"),
@@ -54,7 +57,7 @@ const inputs = {
 /* デフォルト値（リセットボタン用） */
 const DEFAULTS = {
   sizeTitle: 80, spacingTitle: 10, yTitle: 160, xTitleOffset: 0,
-  sizeBody: 45, spacingBody: 30, yBodyOffset: 0, xBodyOffset: 0,
+  sizeBody: 45, spacingBody: 12, paragraphSpacingBody: 55, yBodyOffset: 0, xBodyOffset: 0,
   sizeFooter: 40, spacingFooter: 10, yFooter: 1650, xFooterOffset: 0,
 };
 
@@ -68,6 +71,7 @@ const valueSpanMap = {
   xTitleOffset: "xTitleOffsetVal",
   sizeBody: "sizeBodyVal",
   spacingBody: "spacingBodyVal",
+  paragraphSpacingBody: "paragraphSpacingBodyVal",
   yBodyOffset: "yBodyOffsetVal",
   xBodyOffset: "xBodyOffsetVal",
   sizeFooter: "sizeFooterVal",
@@ -134,69 +138,129 @@ function getFontMetrics(measureCtx, cssFont, fallbackSize) {
   return { ascent, descent };
 }
 
-// 複数行テキストのブロックサイズを計測
-function measureBlock(measureCtx, text, size, spacing, weight) {
+// テキストを「段落（空行区切りのグループ）」に分割する。
+// 空行そのものは描画対象から除外し、段落の区切り位置だけを記録する。
+function splitParagraphs(text) {
+  const rawLines = text.split("\n");
+  const paragraphs = [];
+  let current = [];
+  for (const line of rawLines) {
+    if (line.trim() === "") {
+      if (current.length > 0) {
+        paragraphs.push(current);
+        current = [];
+      }
+      // 連続する空行は無視（区切りとしてのみ機能）
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.length > 0) paragraphs.push(current);
+  if (paragraphs.length === 0) paragraphs.push([""]);
+  return paragraphs;
+}
+
+// 段落配列を「行＋段落末フラグ」のフラットなリストに変換する
+function buildLineList(paragraphs) {
+  const lines = [];
+  paragraphs.forEach((para, pi) => {
+    para.forEach((lineText, li) => {
+      const isLastLineOfPara = li === para.length - 1;
+      const isLastPara = pi === paragraphs.length - 1;
+      lines.push({
+        text: lineText,
+        // この行の「下」に段落間ギャップを追加するか
+        gapAfter: isLastLineOfPara && !isLastPara,
+      });
+    });
+  });
+  return lines;
+}
+
+// 複数行テキストのブロックサイズを計測（段落間ギャップ対応）
+function measureBlock(measureCtx, text, size, spacing, weight, paragraphGap = 0) {
   const cssFont = `${weight} ${size}px "${FONT_FAMILY}"`;
   measureCtx.font = cssFont;
-  const lines = text.split("\n");
+
+  const paragraphs = splitParagraphs(text);
+  const lines = buildLineList(paragraphs);
+
   let maxLineWidth = 0;
   for (const line of lines) {
-    const w = measureCtx.measureText(line).width;
+    const w = measureCtx.measureText(line.text).width;
     if (w > maxLineWidth) maxLineWidth = w;
   }
+
   const { ascent, descent } = getFontMetrics(measureCtx, cssFont, size);
   const lineHeight = ascent + descent;
-  const totalHeight = lines.length > 0
-    ? lineHeight * lines.length + spacing * (lines.length - 1)
-    : 0;
+
+  let totalHeight = 0;
+  if (lines.length > 0) {
+    totalHeight = lineHeight * lines.length;
+    for (let i = 0; i < lines.length - 1; i++) {
+      totalHeight += lines[i].gapAfter ? (spacing + paragraphGap) : spacing;
+    }
+  }
+
   return { lines, maxLineWidth, ascent, descent, lineHeight, totalHeight, cssFont };
 }
 
-// スマート・リサイズ：指定した幅・高さに収まるまでフォントサイズと行間を縮小
-function fitFontAndSpacing(measureCtx, text, baseSize, baseSpacing, maxWidth, maxHeight, weight, minScalePercent) {
+// スマート・リサイズ：指定した幅・高さに収まるまでフォントサイズと行間・段落間を縮小
+function fitFontAndSpacing(measureCtx, text, baseSize, baseSpacing, maxWidth, maxHeight, weight, minScalePercent, baseParagraphGap = 0) {
   const minScale = minScalePercent / 100;
   const minSize = Math.max(ABSOLUTE_MIN_FONT_SIZE, Math.round(baseSize * minScale));
 
   let size = Math.max(Math.round(baseSize), ABSOLUTE_MIN_FONT_SIZE);
   let spacing = baseSpacing;
-  let metrics = measureBlock(measureCtx, text, size, spacing, weight);
+  let paragraphGap = baseParagraphGap;
+  let metrics = measureBlock(measureCtx, text, size, spacing, weight, paragraphGap);
 
   while (true) {
     const fits = metrics.maxLineWidth <= maxWidth && metrics.totalHeight <= maxHeight;
     if (fits || size <= minSize) break;
     size = Math.max(size - 1, minSize);
-    spacing = baseSpacing * (size / baseSize);
-    metrics = measureBlock(measureCtx, text, size, spacing, weight);
+    const ratio = size / baseSize;
+    spacing = baseSpacing * ratio;
+    paragraphGap = baseParagraphGap * ratio;
+    metrics = measureBlock(measureCtx, text, size, spacing, weight, paragraphGap);
   }
 
   const scale = baseSize > 0 ? size / baseSize : 1;
-  return { size, spacing, metrics, scale };
+  return { size, spacing, paragraphGap, metrics, scale };
 }
 
 /* ---------------- 描画処理 ---------------- */
 
 // 疑似太字（肉付け）付きで複数行テキストを描画する
-function drawTextBlock(drawCtx, text, centerX, topY, metrics, size, spacing, weight, isBold, strength) {
+// align: "center" | "left"
+// x座標の意味は align に応じて変わる（center: 中心X / left: 左端X）
+// paragraphGap: 段落区切り直後の行に追加する行間（px）
+function drawTextBlock(drawCtx, text, x, topY, metrics, size, spacing, weight, isBold, strength, align = "center", paragraphGap = 0) {
   drawCtx.font = `${weight} ${size}px "${FONT_FAMILY}"`;
   drawCtx.fillStyle = "#FFFFFF";
-  drawCtx.textAlign = "center";
+  drawCtx.textAlign = align === "left" ? "left" : "center";
   drawCtx.textBaseline = "alphabetic";
 
   const lines = metrics.lines;
   const lineHeight = metrics.lineHeight;
   let baselineY = topY + metrics.ascent;
 
+  // 太字が弱い強度（<0.4程度）でもしっかり効果が見えるよう、
+  // オフセットが0にならない最小限のパターンにフォールバックする。
+  const offsets = strength > 0 ? [-strength, 0, strength] : [0];
+
   for (const line of lines) {
-    if (isBold) {
-      for (const dx of [-strength, 0, strength]) {
-        for (const dy of [-strength, 0, strength]) {
-          drawCtx.fillText(line, centerX + dx, baselineY + dy);
+    if (isBold && strength > 0) {
+      for (const dx of offsets) {
+        for (const dy of offsets) {
+          drawCtx.fillText(line.text, x + dx, baselineY + dy);
         }
       }
     } else {
-      drawCtx.fillText(line, centerX, baselineY);
+      drawCtx.fillText(line.text, x, baselineY);
     }
-    baselineY += lineHeight + spacing;
+    const extraGap = line.gapAfter ? paragraphGap : 0;
+    baselineY += lineHeight + spacing + extraGap;
   }
 }
 
@@ -228,8 +292,10 @@ function renderPreview() {
 
   const sizeBody = parseFloat(inputs.sizeBody.value);
   const spacingBody = parseFloat(inputs.spacingBody.value);
+  const paragraphSpacingBody = parseFloat(inputs.paragraphSpacingBody.value);
   const yBodyOffset = parseFloat(inputs.yBodyOffset.value);
   const xBodyOffset = parseFloat(inputs.xBodyOffset.value);
+  const bodyAlign = (inputs.bodyAlignLeft && inputs.bodyAlignLeft.checked) ? "left" : "center";
 
   const sizeFooter = parseFloat(inputs.sizeFooter.value);
   const spacingFooter = parseFloat(inputs.spacingFooter.value);
@@ -269,7 +335,7 @@ function renderPreview() {
   }
 
   const titleCenterX = CANVAS_W / 2 + xTitleOffset;
-  drawTextBlock(ctx, titleText, titleCenterX, yTitle, titleMetrics, titleFontSize, titleSpacingFit, titleWeight, isBoldTitle, boldStrength);
+  drawTextBlock(ctx, titleText, titleCenterX, yTitle, titleMetrics, titleFontSize, titleSpacingFit, titleWeight, isBoldTitle, boldStrength, "center");
   const titleBottom = yTitle + titleMetrics.totalHeight;
 
   // ---------- 2. フッター：幅に収まるようにサイズを自動調整 ----------
@@ -290,32 +356,41 @@ function renderPreview() {
   }
 
   const footerCenterX = CANVAS_W / 2 + xFooterOffset;
-  drawTextBlock(ctx, footerText, footerCenterX, yFooter, footerMetrics, footerFontSize, footerSpacingFit, footerWeight, isBoldFooter, boldStrength);
+  drawTextBlock(ctx, footerText, footerCenterX, yFooter, footerMetrics, footerFontSize, footerSpacingFit, footerWeight, isBoldFooter, boldStrength, "center");
 
   // ---------- 3. 本文：タイトル〜フッターの空きスペースに収まるように自動調整 ----------
   const availableSpace = Math.max(yFooter - titleBottom, 0);
 
-  let bodyFontSize, bodySpacingFit, bodyMetrics;
+  let bodyFontSize, bodySpacingFit, bodyParagraphGapFit, bodyMetrics;
   if (autoFitEnabled) {
     const verticalPadding = 40;
     const bodyMaxHeight = Math.max(availableSpace - verticalPadding * 2, 10);
     const fit = fitFontAndSpacing(
       ctx, bodyText, sizeBody, spacingBody,
-      MAX_TEXT_WIDTH - bodyBoldMargin, bodyMaxHeight, bodyWeight, minScalePercent
+      MAX_TEXT_WIDTH - bodyBoldMargin, bodyMaxHeight, bodyWeight, minScalePercent, paragraphSpacingBody
     );
     bodyFontSize = fit.size;
     bodySpacingFit = fit.spacing;
+    bodyParagraphGapFit = fit.paragraphGap;
     bodyMetrics = fit.metrics;
     fitInfo.body = fit.scale;
   } else {
     bodyFontSize = sizeBody;
     bodySpacingFit = spacingBody;
-    bodyMetrics = measureBlock(ctx, bodyText, bodyFontSize, bodySpacingFit, bodyWeight);
+    bodyParagraphGapFit = paragraphSpacingBody;
+    bodyMetrics = measureBlock(ctx, bodyText, bodyFontSize, bodySpacingFit, bodyWeight, bodyParagraphGapFit);
   }
 
-  const bodyCenterX = CANVAS_W / 2 + xBodyOffset;
+  // 中央揃え・左揃え共に、テキストブロックは常に中央寄せの範囲内に配置される。
+  // 左揃えの場合は、最大行幅を基準にブロックの左端Xを計算する。
+  let bodyDrawX;
+  if (bodyAlign === "left") {
+    bodyDrawX = (CANVAS_W - bodyMetrics.maxLineWidth) / 2 + xBodyOffset;
+  } else {
+    bodyDrawX = CANVAS_W / 2 + xBodyOffset;
+  }
   const bodyTopY = titleBottom + (availableSpace - bodyMetrics.totalHeight) / 2 + yBodyOffset;
-  drawTextBlock(ctx, bodyText, bodyCenterX, bodyTopY, bodyMetrics, bodyFontSize, bodySpacingFit, bodyWeight, isBoldBody, boldStrength);
+  drawTextBlock(ctx, bodyText, bodyDrawX, bodyTopY, bodyMetrics, bodyFontSize, bodySpacingFit, bodyWeight, isBoldBody, boldStrength, bodyAlign, bodyParagraphGapFit);
 
   updateFitNotice(fitInfo, autoFitEnabled);
 }
@@ -353,7 +428,8 @@ function attachEvents() {
     inputs.boldTitle, inputs.boldBody, inputs.boldFooter, inputs.boldStrength,
     inputs.autoFitEnabled, inputs.minScalePercent,
     inputs.sizeTitle, inputs.spacingTitle, inputs.yTitle, inputs.xTitleOffset,
-    inputs.sizeBody, inputs.spacingBody, inputs.yBodyOffset, inputs.xBodyOffset,
+    inputs.sizeBody, inputs.spacingBody, inputs.paragraphSpacingBody, inputs.yBodyOffset, inputs.xBodyOffset,
+    inputs.bodyAlignCenter, inputs.bodyAlignLeft,
     inputs.sizeFooter, inputs.spacingFooter, inputs.yFooter, inputs.xFooterOffset,
     inputs.titleInput, inputs.bodyInput, inputs.footerInput,
   ];
@@ -380,8 +456,10 @@ function attachEvents() {
   el("resetBodyBtn").addEventListener("click", () => {
     inputs.sizeBody.value = DEFAULTS.sizeBody;
     inputs.spacingBody.value = DEFAULTS.spacingBody;
+    inputs.paragraphSpacingBody.value = DEFAULTS.paragraphSpacingBody;
     inputs.yBodyOffset.value = DEFAULTS.yBodyOffset;
     inputs.xBodyOffset.value = DEFAULTS.xBodyOffset;
+    if (inputs.bodyAlignCenter) inputs.bodyAlignCenter.checked = true;
     refreshValueLabels();
     scheduleRender();
   });

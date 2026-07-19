@@ -116,6 +116,28 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+.align-row {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.3rem;
+}
+
+.radio-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.radio-inline input[type="radio"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--brand-green);
+}
+
 .reset-btn {
   width: 100%;
   padding: 0.5rem 0.6rem;
@@ -148,13 +170,17 @@ html, body {
   flex: 1;
   padding: 1.5rem 2rem;
   overflow-x: hidden;
+  /* main 自体はスクロールさせず、内側の col-input だけをスクロールさせる */
+  height: calc(100vh - 64px);
+  overflow-y: hidden;
 }
 
 .columns {
   display: flex;
   gap: 2.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-start;
+  height: 100%;
 }
 
 .col {
@@ -172,6 +198,14 @@ html, body {
   font-size: 0.9rem;
   font-weight: 600;
   margin: 1rem 0 0.35rem;
+}
+
+.col-input {
+  /* 左側の入力パラメータエリアのみを上下スクロールさせる */
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 0.75rem;
+  padding-bottom: 2rem;
 }
 
 .col-input textarea {
@@ -194,6 +228,12 @@ html, body {
 .col-preview {
   flex: 1 1 420px;
   max-width: 560px;
+  /* 右側はスクロールしても常に視城内に固定する */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100%;
+  overflow-y: auto;
 }
 
 .preview-frame {
@@ -276,11 +316,25 @@ html, body {
     border-bottom: 1px solid var(--border-color);
     max-height: none;
   }
+  .main {
+    height: auto;
+    overflow-y: visible;
+  }
   .columns {
     flex-direction: column;
+    flex-wrap: wrap;
+    height: auto;
+  }
+  .col-input {
+    height: auto;
+    overflow-y: visible;
+    padding-right: 0;
   }
   .col-preview {
     max-width: 100%;
+    position: static;
+    max-height: none;
+    overflow-y: visible;
   }
   .preview-frame {
     max-width: 380px;
