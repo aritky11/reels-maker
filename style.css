@@ -19,7 +19,8 @@ html, body {
   color: var(--text-color);
   background: #ffffff;
   /* デスクトップ幅ではページ全体はスクロールさせず、
-     .layout 内の各パネル（サイドバー／col-input）だけを個別にスクロールさせる */
+     .layout 内でスクロール可能なのは「⚙️ デザイン設定」(.sidebar)のみ。
+     テキスト入力(.col-input)・プレビュー(.col-preview)はスクロールさせない */
   height: 100%;
   overflow: hidden;
   /* Mac/Safariのトラックパッドなどで発生する「慣性スクロールが
@@ -195,7 +196,8 @@ body {
   flex: 1 1 auto;
   padding: 1.5rem 2rem;
   overflow-x: hidden;
-  /* main 自体はスクロールさせず、内側の col-input だけをスクロールさせる */
+  /* main / col-input / col-preview のいずれもスクロールさせない。
+     スクロール可能な領域は「⚙️ デザイン設定」(.sidebar)のみに限定する。 */
   height: 100%;
   min-height: 0;
   overflow-y: hidden;
@@ -228,14 +230,14 @@ body {
 }
 
 .col-input {
-  /* 左側の入力パラメータエリアのみを上下スクロールさせる */
+  /* ページ全体でスクロール可能な領域を「⚙️ デザイン設定」(.sidebar)のみに
+     限定するため、テキスト入力エリアはスクロールさせず高さ固定で表示する。
+     (以前はここも overflow-y:auto でスクロール可能にしていたが、
+     「デザイン設定のみスクロールできるようにしたい」という要望に合わせて変更) */
   height: 100%;
-  overflow-y: auto;
+  overflow-y: hidden;
   padding-right: 0.75rem;
   padding-bottom: 2rem;
-  /* col-input内のスクロールが端まで達しても、その先が
-     親やプレビュー側に伝播しないようにする */
-  overscroll-behavior: contain;
 }
 
 .col-input textarea {
@@ -258,13 +260,12 @@ body {
 .col-preview {
   flex: 1 1 420px;
   max-width: 560px;
-  /* 左側(.col-input)だけがスクロールするレイアウトなので、
-     このエリア自体は親(.columns)の高さいっぱいで常に画面内に留まる。
-     万が一コンテンツが縦に長くなった場合の保険として overflow-y:auto を付与。 */
+  /* ページ内でスクロール可能な領域を「⚙️ デザイン設定」(.sidebar)のみに
+     限定するため、プレビューエリアはスクロールさせず常に同じ位置・
+     同じ高さで画面に固定表示する。 */
   height: 100%;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow-y: hidden;
   display: flex;
   flex-direction: column;
   justify-content: center;
