@@ -22,6 +22,11 @@ html, body {
      .layout 内の各パネル（サイドバー／col-input）だけを個別にスクロールさせる */
   height: 100%;
   overflow: hidden;
+  /* Mac/Safariのトラックパッドなどで発生する「慣性スクロールが
+     ページ全体のラバーバンド(バウンス)に伝播してしまう」現象を防ぐ。
+     これがないと、パネル内スクロールが端まで達した際に、その後の
+     惰性分がページ全体に流れ込み「一緒にスクロールされる」ように見える。 */
+  overscroll-behavior: none;
 }
 
 /* body を縦方向のflexコンテナにして、topbar（可変高さ）+ layout（残り全部）で
@@ -61,6 +66,9 @@ body {
   border-right: 1px solid var(--border-color);
   overflow-y: auto;
   height: 100%;
+  /* サイドバー内のスクロールが端まで達しても、その先の
+     スクロールが親(ページ全体)や隣のカラムに伝播しないようにする */
+  overscroll-behavior: contain;
 }
 
 .sidebar h2 {
@@ -225,6 +233,9 @@ body {
   overflow-y: auto;
   padding-right: 0.75rem;
   padding-bottom: 2rem;
+  /* col-input内のスクロールが端まで達しても、その先が
+     親やプレビュー側に伝播しないようにする */
+  overscroll-behavior: contain;
 }
 
 .col-input textarea {
@@ -253,6 +264,7 @@ body {
   height: 100%;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -336,6 +348,7 @@ body {
   html, body {
     height: auto;
     overflow: visible;
+    overscroll-behavior: auto;
   }
   body {
     display: block;
