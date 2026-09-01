@@ -15,6 +15,9 @@ FONT_PATH = "font.ttf"
 BASE_IMAGE_PATH = "base.png"   # 装飾（枠・ヘッダー）の供給元。緑は抜いて使う
 W, H = 1080, 1920
 
+# プレビュー枠の大きさ → 左右の余白比率
+PREVIEW_RATIOS = {"小": 2.2, "中": 1.0, "大": 0.35, "最大": 0.0}
+
 
 # --- ffmpeg ユーティリティ -------------------------------------------------
 def find_ffmpeg():
@@ -128,9 +131,11 @@ def keyed_decoration(path, tolerance):
     return Image.fromarray(arr.astype(np.uint8))
 
 
-# --- リセット用のカウンター（Key）の管理 -----------------------------------
-if "reset_counter" not in st.session_state:
-    st.session_state["reset_counter"] = 0
+# --- セッション初期化 ------------------------------------------------------
+for k, v in {"reset_counter": 0, "show_video": False,
+             "prev_bytes": None, "prev_fp": None,
+             "mp4_bytes": None, "mp4_fp": None}.items():
+    st.session_state.setdefault(k, v)
 
 
 # --- サイドバー ------------------------------------------------------------
@@ -146,6 +151,11 @@ else:
         "Streamlit Cloud: requirements.txt に `imageio-ffmpeg` を追加"
     )
 
+st.sidebar.subheader("【表示設定】")
+preview_size = st.sidebar.select_slider(
+    "プレビューの大きさ", options=list(PREVIEW_RATIOS.keys()), value="中",
+)
+
 st.sidebar.subheader("【背景・動画設定】")
 scrim = st.sidebar.slider(
     "背景の暗幕（文字の可読性）", 0, 220, 110,
@@ -157,7 +167,8 @@ green_tolerance = st.sidebar.slider(
     help="装飾まで消えるなら下げる。緑が残るなら上げる。",
 )
 preview_at = st.sidebar.slider("静止プレビューに使う秒数", 0.0, 10.0, 0.5, step=0.5)
-duration = st.sidebar.slider("動画の尺（秒）", 3.0, 30.0, 8.0, step=0.5)
+prev_len = st.sidebar.slider("動作確認の尺（秒）", 2.0, 10.0, 4.0, step=1.0)
+duration = st.sidebar.slider("本番動画の尺（秒）", 3.0, 30.0, 8.0, step=0.5)
 fps = st.sidebar.selectbox("フレームレート", [24, 30, 60], index=1)
 loop_bg = st.sidebar.checkbox("背景素材が短い場合ループさせる", value=True)
 
@@ -302,15 +313,22 @@ def settings_fingerprint(overlay_img, video_bytes):
     h = hashlib.md5()
     h.update(overlay_img.tobytes())
     h.update(str(len(video_bytes) if video_bytes else 0).encode())
-    h.update(f"{duration}-{fps}-{loop_bg}".encode())
+    h.update(f"{duration}-{prev_len}-{fps}-{loop_bg}".encode())
     return h.hexdigest()
+
+
+def preview_slot():
+    """プレビューを表示する枠。左右に余白を入れて縮める。"""
+    pad = PREVIEW_RATIOS[preview_size]
+    if pad <= 0:
+        return st.container()
+    left, center, right = st.columns([pad, 1.0, pad])
+    return center
 
 
 # --- プレビュー表示エリア（右カラム） --------------------------------------
 with col2:
-    st.subheader("👀 プレビュー")
     overlay, error = create_overlay()
-
     if error:
         st.error(error)
         st.stop()
@@ -321,46 +339,59 @@ with col2:
     else:
         suffix, vbytes = None, None
 
-    # --- 静止プレビュー（位置調整用・常時更新） ---
-    if vbytes:
-        frame, frame_err = extract_frame(vbytes, suffix, preview_at)
-        if frame is None:
-            st.warning(f"背景フレームを取得できませんでした。\n\n{frame_err}")
-            bg = Image.new("RGBA", (W, H), (18, 18, 18, 255))
-        else:
-            bg = frame
-    else:
-        bg = Image.new("RGBA", (W, H), (18, 18, 18, 255))
-        st.caption("背景動画をアップすると、実際のフレームに対して位置を調整できます。")
-
-    st.image(Image.alpha_composite(bg, overlay), use_container_width=True)
-
-    st.markdown("---")
-    st.subheader("▶️ 動作確認")
-
     fp = settings_fingerprint(overlay, vbytes)
-    prev_len = st.sidebar.slider("確認用プレビューの尺（秒）", 2.0, 10.0, 4.0, step=1.0)
 
-    if st.button("▶️ 動きを確認する（低画質・短尺）",
-                 use_container_width=True, disabled=vbytes is None):
-        with st.spinner("プレビューを生成中... 数秒お待ちください"):
-            try:
-                st.session_state["prev_bytes"] = build_mp4(
-                    vbytes, suffix, overlay,
-                    duration=min(prev_len, duration), fps=fps, loop_bg=loop_bg,
-                    out_w=540, out_h=960, preset="ultrafast", crf=30,
-                )
-                st.session_state["prev_fp"] = fp
-            except RuntimeError as err:
-                st.session_state["prev_bytes"] = None
-                st.error(str(err))
+    # 設定が変わったら自動で静止に戻す（古い映像を見続けないため）
+    stale = st.session_state["prev_bytes"] is not None and st.session_state["prev_fp"] != fp
+    if stale:
+        st.session_state["show_video"] = False
 
-    if st.session_state.get("prev_bytes"):
-        st.video(st.session_state["prev_bytes"], loop=True, autoplay=True, muted=True)
-        if st.session_state.get("prev_fp") != fp:
-            st.warning("設定を変更しました。もう一度「動きを確認する」を押すと反映されます。")
+    head, btn = st.columns([1, 1])
+    with head:
+        st.subheader("👀 プレビュー")
+    with btn:
+        if st.session_state["show_video"]:
+            if st.button("🖼 静止に戻す", use_container_width=True):
+                st.session_state["show_video"] = False
+                st.rerun()
         else:
-            st.caption("本番と同じ合成処理です。解像度と画質だけを落としています。")
+            if st.button("▶️ 動きを確認する", use_container_width=True, disabled=vbytes is None):
+                with st.spinner("プレビューを生成中..."):
+                    try:
+                        st.session_state["prev_bytes"] = build_mp4(
+                            vbytes, suffix, overlay,
+                            duration=min(prev_len, duration), fps=fps, loop_bg=loop_bg,
+                            out_w=540, out_h=960, preset="ultrafast", crf=30,
+                        )
+                        st.session_state["prev_fp"] = fp
+                        st.session_state["show_video"] = True
+                        st.rerun()
+                    except RuntimeError as err:
+                        st.error(str(err))
+
+    slot = preview_slot()
+
+    if st.session_state["show_video"] and st.session_state["prev_bytes"]:
+        with slot:
+            st.video(st.session_state["prev_bytes"], loop=True, autoplay=True, muted=True)
+        st.caption("動作確認モード。本番と同じ合成処理で、解像度と画質だけ落としています。")
+    else:
+        if vbytes:
+            frame, frame_err = extract_frame(vbytes, suffix, preview_at)
+            if frame is None:
+                st.warning(f"背景フレームを取得できませんでした。\n\n{frame_err}")
+                bg = Image.new("RGBA", (W, H), (18, 18, 18, 255))
+            else:
+                bg = frame
+        else:
+            bg = Image.new("RGBA", (W, H), (18, 18, 18, 255))
+            st.caption("背景動画をアップすると、実際のフレームに対して位置を調整できます。")
+
+        with slot:
+            st.image(Image.alpha_composite(bg, overlay), use_container_width=True)
+
+        if stale:
+            st.caption("設定を変更したので静止表示に戻しました。もう一度「動きを確認する」で再生成できます。")
 
     st.markdown("---")
     st.subheader("⬇️ 書き出し")
@@ -378,8 +409,8 @@ with col2:
                 st.session_state["mp4_bytes"] = None
                 st.error(str(err))
 
-    if st.session_state.get("mp4_bytes"):
-        if st.session_state.get("mp4_fp") != fp:
+    if st.session_state["mp4_bytes"]:
+        if st.session_state["mp4_fp"] != fp:
             st.warning("下のMP4は、変更前の設定で書き出したものです。")
         st.download_button(
             label="⬇️ MP4をダウンロード",
@@ -398,4 +429,3 @@ with col2:
         mime="image/png",
         use_container_width=True,
     )
-
