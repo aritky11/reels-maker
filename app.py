@@ -15,8 +15,10 @@ FONT_PATH = "font.ttf"
 BASE_IMAGE_PATH = "base.png"   # 装飾（枠・ヘッダー）の供給元。緑は抜いて使う
 W, H = 1080, 1920
 
-# プレビュー枠の大きさ → 左右の余白比率
-PREVIEW_RATIOS = {"小": 2.2, "中": 1.0, "大": 0.35, "最大": 0.0}
+# --- 固定値（UIから外した設定。変えたいときはここを書き換える） -------------
+USE_DECORATION = True      # base.pngの枠・ヘッダーを重ねるか
+GREEN_TOLERANCE = 18       # 緑の抜き具合。装飾が消えるなら下げる／緑が残るなら上げる
+PREVIEW_FRAME_SEC = 0.5    # 静止プレビューに使う、動画の何秒地点か
 
 
 # --- ffmpeg ユーティリティ -------------------------------------------------
@@ -152,8 +154,9 @@ else:
     )
 
 st.sidebar.subheader("【表示設定】")
-preview_size = st.sidebar.select_slider(
-    "プレビューの大きさ", options=list(PREVIEW_RATIOS.keys()), value="中",
+preview_pct = st.sidebar.slider(
+    "プレビューの大きさ（%）", 20, 100, 55, step=5,
+    help="表示上の大きさだけを変えます。書き出される動画には影響しません。",
 )
 
 st.sidebar.subheader("【背景・動画設定】")
@@ -161,12 +164,6 @@ scrim = st.sidebar.slider(
     "背景の暗幕（文字の可読性）", 0, 220, 110,
     help="0で動画そのまま。上げるほど背景が沈み、白文字が読みやすくなる。",
 )
-use_decoration = st.sidebar.checkbox("base.pngの装飾を重ねる（緑は自動で透過）", value=True)
-green_tolerance = st.sidebar.slider(
-    "緑の抜き具合", 5, 80, 25, disabled=not use_decoration,
-    help="装飾まで消えるなら下げる。緑が残るなら上げる。",
-)
-preview_at = st.sidebar.slider("静止プレビューに使う秒数", 0.0, 10.0, 0.5, step=0.5)
 prev_len = st.sidebar.slider("動作確認の尺（秒）", 2.0, 10.0, 4.0, step=1.0)
 duration = st.sidebar.slider("本番動画の尺（秒）", 3.0, 30.0, 8.0, step=0.5)
 fps = st.sidebar.selectbox("フレームレート", [24, 30, 60], index=1)
@@ -262,8 +259,8 @@ def create_overlay():
     if scrim > 0:
         layer = Image.alpha_composite(layer, Image.new("RGBA", (W, H), (0, 0, 0, scrim)))
 
-    if use_decoration:
-        deco = keyed_decoration(BASE_IMAGE_PATH, green_tolerance)
+    if USE_DECORATION:
+        deco = keyed_decoration(BASE_IMAGE_PATH, GREEN_TOLERANCE)
         if deco is not None:
             layer = Image.alpha_composite(layer, deco)
 
@@ -317,12 +314,13 @@ def settings_fingerprint(overlay_img, video_bytes):
     return h.hexdigest()
 
 
-def preview_slot():
-    """プレビューを表示する枠。左右に余白を入れて縮める。"""
-    pad = PREVIEW_RATIOS[preview_size]
-    if pad <= 0:
+def preview_slot(pct):
+    """プレビューを表示する枠。左右に余白カラムを入れて幅を絞る。"""
+    f = max(0.05, min(pct / 100.0, 1.0))
+    if f >= 0.99:
         return st.container()
-    left, center, right = st.columns([pad, 1.0, pad])
+    pad = (1.0 - f) / (2.0 * f)
+    _left, center, _right = st.columns([pad, 1.0, pad])
     return center
 
 
@@ -369,7 +367,7 @@ with col2:
                     except RuntimeError as err:
                         st.error(str(err))
 
-    slot = preview_slot()
+    slot = preview_slot(preview_pct)
 
     if st.session_state["show_video"] and st.session_state["prev_bytes"]:
         with slot:
@@ -377,7 +375,7 @@ with col2:
         st.caption("動作確認モード。本番と同じ合成処理で、解像度と画質だけ落としています。")
     else:
         if vbytes:
-            frame, frame_err = extract_frame(vbytes, suffix, preview_at)
+            frame, frame_err = extract_frame(vbytes, suffix, PREVIEW_FRAME_SEC)
             if frame is None:
                 st.warning(f"背景フレームを取得できませんでした。\n\n{frame_err}")
                 bg = Image.new("RGBA", (W, H), (18, 18, 18, 255))
@@ -419,13 +417,3 @@ with col2:
             mime="video/mp4",
             use_container_width=True,
         )
-
-    buf = io.BytesIO()
-    overlay.save(buf, format="PNG")
-    st.download_button(
-        label="⬇️ 透過PNGをダウンロード（クロマキー不要）",
-        data=buf.getvalue(),
-        file_name="reels_overlay.png",
-        mime="image/png",
-        use_container_width=True,
-    )
