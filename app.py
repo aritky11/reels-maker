@@ -135,11 +135,40 @@ def build_mp4(video_bytes, suffix, overlay_img, duration, fps, loop_bg,
 # --- base.png から緑だけを抜く（装飾は残す） -------------------------------
 @st.cache_data(show_spinner=False)
 def keyed_decoration(path, tolerance, cw, ch):
-    """緑背景のbase.pngから緑を透明化し、枠やヘッダーだけを残したRGBAを返す。"""
+    """緑背景のbase.pngから緑を透明化し、枠やヘッダーだけを残したRGBAを返す。
+
+    縦横比が違うキャンバスでも装飾を縦に潰さない。
+    幅だけ比率どおりに合わせ、高さは中央を捨てて上下の飾りを残す。
+    """
     try:
-        img = Image.open(path).convert("RGBA").resize((cw, ch))
+        img = Image.open(path).convert("RGBA")
     except FileNotFoundError:
         return None
+
+    sw, sh = img.size
+
+    # 幅をキャンバスに合わせる（縦横比は保つ）
+    if sw != cw:
+        nh = max(1, int(sh * cw / sw + 0.5))
+        img = img.resize((cw, nh), Image.LANCZOS)
+        sw, sh = cw, nh
+
+    # 高さの調整：潰さずに、上下の装飾だけを残す
+    if sh > ch:
+        canvas = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+        top_h = ch // 2
+        bot_h = ch - top_h
+        canvas.paste(img.crop((0, 0, cw, top_h)), (0, 0))
+        canvas.paste(img.crop((0, sh - bot_h, cw, sh)), (0, ch - bot_h))
+        img = canvas
+    elif sh < ch:
+        canvas = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+        top_h = sh // 2
+        bot_h = sh - top_h
+        canvas.paste(img.crop((0, 0, cw, top_h)), (0, 0))
+        canvas.paste(img.crop((0, top_h, cw, sh)), (0, ch - bot_h))
+        img = canvas
+
     arr = np.array(img).astype(np.int16)
     r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
     green_mask = (g > r + tolerance) & (g > b + tolerance)
