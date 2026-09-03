@@ -9,16 +9,20 @@ import subprocess
 import tempfile
 
 # --- 基本設定 ---
-st.set_page_config(page_title="AIリール生成ツール", layout="wide")
+st.set_page_config(page_title="レイラ 投稿生成ツール", layout="wide")
 
 FONT_PATH = "font.ttf"
 BASE_IMAGE_PATH = "base.png"   # 装飾（枠・ヘッダー）の供給元。緑は抜いて使う
-W, H = 1080, 1920
+
+# 出力サイズ（モードで切り替える）
+REEL_W, REEL_H = 1080, 1920   # リール 9:16
+FEED_W, FEED_H = 1080, 1350   # フィード 4:5
 
 # --- 固定値（UIから外した設定。変えたいときはここを書き換える） -------------
-USE_DECORATION = True      # base.pngの枠・ヘッダーを重ねるか
 GREEN_TOLERANCE = 18       # 緑の抜き具合。装飾が消えるなら下げる／緑が残るなら上げる
 PREVIEW_FRAME_SEC = 0.5    # 静止プレビューに使う、動画の何秒地点か
+
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
 
 # --- ffmpeg ユーティリティ -------------------------------------------------
@@ -35,7 +39,7 @@ def find_ffmpeg():
 
 
 @st.cache_data(show_spinner=False)
-def extract_frame(video_bytes, suffix, at_sec):
+def extract_frame(video_bytes, suffix, at_sec, cw, ch):
     """背景動画から1フレーム抜いて返す。 (画像, エラー文) のタプル。"""
     exe = find_ffmpeg()
     if not exe:
@@ -51,7 +55,7 @@ def extract_frame(video_bytes, suffix, at_sec):
         for ss in (str(at_sec), "0"):
             cmd = [
                 exe, "-y", "-ss", ss, "-i", src, "-frames:v", "1",
-                "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}",
+                "-vf", f"scale={cw}:{ch}:force_original_aspect_ratio=increase,crop={cw}:{ch}",
                 dst,
             ]
             proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -63,8 +67,18 @@ def extract_frame(video_bytes, suffix, at_sec):
         return None, f"フレーム抽出に失敗しました:\n{last_err}"
 
 
+def cover_resize(img, cw, ch):
+    """アスペクト比を保ったまま、指定サイズを覆うように拡大して中央で切り出す。"""
+    src_w, src_h = img.size
+    scale = max(cw / src_w, ch / src_h)
+    nw, nh = max(1, int(src_w * scale + 0.5)), max(1, int(src_h * scale + 0.5))
+    img = img.convert("RGBA").resize((nw, nh), Image.LANCZOS)
+    left, top = (nw - cw) // 2, (nh - ch) // 2
+    return img.crop((left, top, left + cw, top + ch))
+
+
 def build_mp4(video_bytes, suffix, overlay_img, duration, fps, loop_bg,
-              out_w=W, out_h=H, preset="medium", crf=20):
+              out_w=REEL_W, out_h=REEL_H, preset="medium", crf=20):
     """背景動画の上に透過PNGを重ねてMP4のバイト列を返す。
 
     out_w / out_h を小さくし preset を軽くすると、確認用の高速プレビューになる。
@@ -120,10 +134,10 @@ def build_mp4(video_bytes, suffix, overlay_img, duration, fps, loop_bg,
 
 # --- base.png から緑だけを抜く（装飾は残す） -------------------------------
 @st.cache_data(show_spinner=False)
-def keyed_decoration(path, tolerance):
+def keyed_decoration(path, tolerance, cw, ch):
     """緑背景のbase.pngから緑を透明化し、枠やヘッダーだけを残したRGBAを返す。"""
     try:
-        img = Image.open(path).convert("RGBA").resize((W, H))
+        img = Image.open(path).convert("RGBA").resize((cw, ch))
     except FileNotFoundError:
         return None
     arr = np.array(img).astype(np.int16)
@@ -143,31 +157,57 @@ for k, v in {"reset_counter": 0, "show_video": False,
 # --- サイドバー ------------------------------------------------------------
 st.sidebar.title("⚙️ デザイン設定")
 
+MODE_REEL = "リール（MP4・1080×1920）"
+MODE_FEED = "フィード（PNG・1080×1350）"
+output_mode = st.sidebar.radio("出力形式", [MODE_REEL, MODE_FEED], index=0)
+is_feed = output_mode == MODE_FEED
+
+CW, CH = (FEED_W, FEED_H) if is_feed else (REEL_W, REEL_H)
+mode_key = "feed" if is_feed else "reel"
+
 _exe = find_ffmpeg()
 if _exe:
     st.sidebar.success("ffmpeg 検出済み")
 else:
-    st.sidebar.error(
+    msg = (
         "ffmpegが見つかりません。\n\n"
         "ローカル: `pip install imageio-ffmpeg`\n\n"
         "Streamlit Cloud: requirements.txt に `imageio-ffmpeg` を追加"
     )
+    if is_feed:
+        st.sidebar.info(msg + "\n\n※PNG出力だけならffmpegは不要です。")
+    else:
+        st.sidebar.error(msg)
 
 st.sidebar.subheader("【表示設定】")
 preview_pct = st.sidebar.slider(
     "プレビューの大きさ（%）", 20, 100, 55, step=5,
-    help="表示上の大きさだけを変えます。書き出される動画には影響しません。",
+    help="表示上の大きさだけを変えます。書き出される画像・動画には影響しません。",
 )
 
-st.sidebar.subheader("【背景・動画設定】")
+st.sidebar.subheader("【背景設定】")
+use_decoration = st.sidebar.checkbox(
+    "装飾枠（base.png）を重ねる", value=True,
+    help="base.pngは9:16向けなので、フィード（4:5）では縦に詰まって見えることがあります。",
+)
 scrim = st.sidebar.slider(
     "背景の暗幕（文字の可読性）", 0, 220, 110,
-    help="0で動画そのまま。上げるほど背景が沈み、白文字が読みやすくなる。",
+    help="0で背景そのまま。上げるほど背景が沈み、白文字が読みやすくなる。",
 )
-prev_len = st.sidebar.slider("動作確認の尺（秒）", 2.0, 10.0, 4.0, step=1.0)
-duration = st.sidebar.slider("本番動画の尺（秒）", 3.0, 30.0, 8.0, step=0.5)
-fps = st.sidebar.selectbox("フレームレート", [24, 30, 60], index=1)
-loop_bg = st.sidebar.checkbox("背景素材が短い場合ループさせる", value=True)
+
+if is_feed:
+    # フィードでは動画設定は使わないが、指紋計算のために値だけ持たせる
+    prev_len, duration, fps, loop_bg = 4.0, 8.0, 30, True
+    feed_bg_mode = st.sidebar.selectbox(
+        "背景の種類", ["単色（#000000）", "アップロードした素材を使う"], index=0,
+    )
+else:
+    feed_bg_mode = None
+    st.sidebar.subheader("【動画設定】")
+    prev_len = st.sidebar.slider("動作確認の尺（秒）", 2.0, 10.0, 4.0, step=1.0)
+    duration = st.sidebar.slider("本番動画の尺（秒）", 3.0, 30.0, 8.0, step=0.5)
+    fps = st.sidebar.selectbox("フレームレート", [24, 30, 60], index=1)
+    loop_bg = st.sidebar.checkbox("背景素材が短い場合ループさせる", value=True)
 
 st.sidebar.subheader("【太字・太さ設定】")
 is_bold_title = st.sidebar.checkbox("タイトルを太字にする", value=True, key="b_title")
@@ -175,15 +215,26 @@ is_bold_body = st.sidebar.checkbox("本文を太字にする", value=False, key=
 is_bold_footer = st.sidebar.checkbox("フッターを太字にする", value=True, key="b_footer")
 bold_strength = st.sidebar.slider("太字の強度", 1.0, 3.0, 1.5, step=0.1)
 
+# モードごとの既定値（1920基準の値を1350へ比例縮小したもの）
+if is_feed:
+    DEF = dict(size_title=72, y_title=115, y_title_max=400,
+               size_body=42, size_footer=36,
+               y_footer=1165, y_footer_min=700, y_footer_max=1330)
+else:
+    DEF = dict(size_title=80, y_title=160, y_title_max=500,
+               size_body=45, size_footer=40,
+               y_footer=1650, y_footer_min=1000, y_footer_max=1900)
+
 with st.sidebar.expander("位置・サイズ・行間の微調整", expanded=True):
 
     run_id = st.session_state["reset_counter"]
+    kk = f"{mode_key}_{run_id}"   # モードを跨いでも値が混ざらないようにする
 
     st.subheader("① タイトル設定")
-    size_title = st.slider("タイトル文字サイズ", 30, 150, value=80, key=f"s_title_{run_id}")
-    spacing_title = st.slider("タイトルの行間", 0, 50, value=10, key=f"sp_title_{run_id}")
-    y_title = st.slider("タイトル上下位置 (Y)", 50, 500, value=160, key=f"y_title_{run_id}")
-    x_title_offset = st.slider("タイトル左右のズレ", -500, 500, value=0, key=f"x_title_{run_id}")
+    size_title = st.slider("タイトル文字サイズ", 30, 150, value=DEF["size_title"], key=f"s_title_{kk}")
+    spacing_title = st.slider("タイトルの行間", 0, 50, value=10, key=f"sp_title_{kk}")
+    y_title = st.slider("タイトル上下位置 (Y)", 30, DEF["y_title_max"], value=DEF["y_title"], key=f"y_title_{kk}")
+    x_title_offset = st.slider("タイトル左右のズレ", -500, 500, value=0, key=f"x_title_{kk}")
 
     if st.button("🔄 タイトルを中央基準に戻す", use_container_width=True):
         st.session_state["reset_counter"] += 1
@@ -191,10 +242,10 @@ with st.sidebar.expander("位置・サイズ・行間の微調整", expanded=Tru
 
     st.markdown("---")
     st.subheader("② 本文設定")
-    size_body = st.slider("本文文字サイズ", 20, 100, value=45, key=f"s_body_{run_id}")
-    spacing_body = st.slider("本文の行間", 10, 100, value=30, key=f"sp_body_{run_id}")
-    y_body_offset = st.slider("本文上下のズレ (中央基準)", -500, 500, value=0, key=f"y_body_{run_id}")
-    x_body_offset = st.slider("本文左右のズレ", -500, 500, value=0, key=f"x_body_{run_id}")
+    size_body = st.slider("本文文字サイズ", 20, 100, value=DEF["size_body"], key=f"s_body_{kk}")
+    spacing_body = st.slider("本文の行間", 10, 100, value=30, key=f"sp_body_{kk}")
+    y_body_offset = st.slider("本文上下のズレ (中央基準)", -500, 500, value=0, key=f"y_body_{kk}")
+    x_body_offset = st.slider("本文左右のズレ", -500, 500, value=0, key=f"x_body_{kk}")
 
     if st.button("🔄 本文を中央基準に戻す", use_container_width=True):
         st.session_state["reset_counter"] += 1
@@ -202,10 +253,11 @@ with st.sidebar.expander("位置・サイズ・行間の微調整", expanded=Tru
 
     st.markdown("---")
     st.subheader("③ フッター設定")
-    size_footer = st.slider("フッター文字サイズ", 20, 100, value=40, key=f"s_footer_{run_id}")
-    spacing_footer = st.slider("フッターの行間", 0, 50, value=10, key=f"sp_footer_{run_id}")
-    y_footer = st.slider("フッター上下位置 (Y)", 1000, 1900, value=1650, key=f"y_footer_{run_id}")
-    x_footer_offset = st.slider("フッター左右のズレ", -500, 500, value=0, key=f"x_footer_{run_id}")
+    size_footer = st.slider("フッター文字サイズ", 20, 100, value=DEF["size_footer"], key=f"s_footer_{kk}")
+    spacing_footer = st.slider("フッターの行間", 0, 50, value=10, key=f"sp_footer_{kk}")
+    y_footer = st.slider("フッター上下位置 (Y)", DEF["y_footer_min"], DEF["y_footer_max"],
+                         value=DEF["y_footer"], key=f"y_footer_{kk}")
+    x_footer_offset = st.slider("フッター左右のズレ", -500, 500, value=0, key=f"x_footer_{kk}")
 
     if st.button("🔄 フッターを中央基準に戻す", use_container_width=True):
         st.session_state["reset_counter"] += 1
@@ -213,31 +265,59 @@ with st.sidebar.expander("位置・サイズ・行間の微調整", expanded=Tru
 
 
 # --- メイン画面 ------------------------------------------------------------
-st.title("🎬 AIリール動画自動生成ツール")
+st.title("🎬 レイラ 投稿生成ツール")
+st.caption(f"現在の出力：{output_mode}")
 
 col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    st.subheader("🎞 背景動画")
-    video_file = st.file_uploader(
-        "Higgsfieldで生成したレイラの動画",
-        type=["mp4", "mov", "webm", "m4v"],
-        help="未アップでもテキストレイヤーの調整はできます。",
+    if is_feed:
+        st.subheader("🖼 背景素材（任意）")
+        upload_types = ["png", "jpg", "jpeg", "webp", "mp4", "mov", "webm", "m4v"]
+        upload_help = "未アップなら黒背景で書き出します。画像でも動画（1フレーム抽出）でも可。"
+    else:
+        st.subheader("🎞 背景動画")
+        upload_types = ["mp4", "mov", "webm", "m4v"]
+        upload_help = "未アップでもテキストレイヤーの調整はできます。"
+
+    media_file = st.file_uploader(
+        "Higgsfieldで生成したレイラの素材", type=upload_types, help=upload_help,
     )
 
     st.subheader("📝 テキスト入力")
-    title_input = st.text_area("① タイトル", "即レスする女が、\n男に飽きられる理由。", height=100)
-    body_input = st.text_area(
-        "② 本文",
-        "・即レスは「いつでも手に入る」という合図よ。\n"
-        "・連絡を待つだけの女に、男は価値を感じない。\n"
-        "・「俺に夢中だな」と確信されたら、そこで終了よ。\n"
-        "・安心感を与えた瞬間、男は貴女を追うのをやめる。\n"
-        "・画面にかじりつく暇があるなら、自分の生活を送りなさい。\n"
-        "・追われたいなら、返信の速度を半分にしなさい。",
-        height=250,
-    )
-    footer_input = st.text_area("③ フッター", "※本気で追われたい女以外は\n 今すぐこの画面を閉じなさい。", height=100)
+
+    if is_feed:
+        d_title = "【このアカウントについて】"
+        d_body = (
+            "レイラは、実在の人物ではないわ。\n\n"
+            "ある男が2年かけて記録した、\n"
+            "\"都合のいい関係\"を\n"
+            "\"一生手放せない相手\"に変えた、\n"
+            "その判断基準のログ。\n\n"
+            "それを、女のあなたにも分かる言葉に\n"
+            "翻訳するために生まれた人格が、レイラ。\n\n"
+            "慰めも、共感も期待しないで。\n"
+            "ここにあるのは、\n"
+            "男という生き物の、動かしようのない事実だけ。"
+        )
+        d_footer = "信じるかどうかは、あなたが決めなさい。\n苦しくたっていい。その経験を、武器にするのよ。"
+        body_h = 320
+    else:
+        d_title = "即レスする女が、\n男に飽きられる理由。"
+        d_body = (
+            "・即レスは「いつでも手に入る」という合図よ。\n"
+            "・連絡を待つだけの女に、男は価値を感じない。\n"
+            "・「俺に夢中だな」と確信されたら、そこで終了よ。\n"
+            "・安心感を与えた瞬間、男は貴女を追うのをやめる。\n"
+            "・画面にかじりつく暇があるなら、自分の生活を送りなさい。\n"
+            "・追われたいなら、返信の速度を半分にしなさい。"
+        )
+        d_footer = "※本気で追われたい女以外は\n 今すぐこの画面を閉じなさい。"
+        body_h = 250
+
+    title_input = st.text_area("① タイトル", d_title, height=100, key=f"t_{mode_key}")
+    body_input = st.text_area("② 本文", d_body, height=body_h, key=f"b_{mode_key}")
+    footer_input = st.text_area("③ フッター", d_footer, height=100, key=f"f_{mode_key}")
 
 
 # --- 疑似太字（肉付け）描画関数 --------------------------------------------
@@ -252,15 +332,19 @@ def draw_text_with_bold(draw, position, text, font, fill, align, spacing, is_bol
 
 
 # --- オーバーレイ生成（完全透過） ------------------------------------------
-def create_overlay():
-    """暗幕 → 装飾 → テキスト の順に重ねた、背景が透明なRGBAを返す。"""
-    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+def create_overlay(cw, ch):
+    """暗幕 → 装飾 → テキスト の順に重ねた、背景が透明なRGBAを返す。
+
+    戻り値は (画像, エラー文, 警告文)。
+    """
+    layer = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+    warn = None
 
     if scrim > 0:
-        layer = Image.alpha_composite(layer, Image.new("RGBA", (W, H), (0, 0, 0, scrim)))
+        layer = Image.alpha_composite(layer, Image.new("RGBA", (cw, ch), (0, 0, 0, scrim)))
 
-    if USE_DECORATION:
-        deco = keyed_decoration(BASE_IMAGE_PATH, GREEN_TOLERANCE)
+    if use_decoration:
+        deco = keyed_decoration(BASE_IMAGE_PATH, GREEN_TOLERANCE, cw, ch)
         if deco is not None:
             layer = Image.alpha_composite(layer, deco)
 
@@ -270,7 +354,7 @@ def create_overlay():
         font_b = ImageFont.truetype(FONT_PATH, size_body)
         font_f = ImageFont.truetype(FONT_PATH, size_footer)
     except IOError:
-        return None, "エラー: font.ttf が見つかりません。GitHubにフォントを配置してください。"
+        return None, "エラー: font.ttf が見つかりません。GitHubにフォントを配置してください。", None
 
     title_text = title_input.replace('\\n', '\n')
     body_text = body_input.replace('\\n', '\n')
@@ -279,38 +363,46 @@ def create_overlay():
     # 1. タイトル描画 (中央揃え)
     bbox_t = draw.multiline_textbbox((0, 0), title_text, font=font_t, align="center", spacing=spacing_title)
     title_w, title_h = bbox_t[2] - bbox_t[0], bbox_t[3] - bbox_t[1]
-    x_t = (W - title_w) / 2 - bbox_t[0] + x_title_offset
+    x_t = (cw - title_w) / 2 - bbox_t[0] + x_title_offset
     draw_text_with_bold(draw, (x_t, y_title), title_text, font=font_t, fill=(255, 255, 255, 255),
                         align="center", spacing=spacing_title, is_bold=is_bold_title, strength=bold_strength)
     title_bottom = y_title + title_h
 
     # 2. フッター描画 (中央揃え)
     bbox_f = draw.multiline_textbbox((0, 0), footer_text, font=font_f, align="center", spacing=spacing_footer)
-    footer_w = bbox_f[2] - bbox_f[0]
-    x_f = (W - footer_w) / 2 - bbox_f[0] + x_footer_offset
+    footer_w, footer_h = bbox_f[2] - bbox_f[0], bbox_f[3] - bbox_f[1]
+    x_f = (cw - footer_w) / 2 - bbox_f[0] + x_footer_offset
     draw_text_with_bold(draw, (x_f, y_footer), footer_text, font=font_f, fill=(255, 255, 255, 255),
                         align="center", spacing=spacing_footer, is_bold=is_bold_footer, strength=bold_strength)
 
     # 3. 本文描画 (完全中央配置 ＆ 中央揃え)
     bbox_b = draw.multiline_textbbox((0, 0), body_text, font=font_b, align="center", spacing=spacing_body)
-    body_w, body_h = bbox_b[2] - bbox_b[0], bbox_b[3] - bbox_b[1]
-    x_b = (W - body_w) / 2 - bbox_b[0] + x_body_offset
+    body_w, body_h_px = bbox_b[2] - bbox_b[0], bbox_b[3] - bbox_b[1]
+    x_b = (cw - body_w) / 2 - bbox_b[0] + x_body_offset
 
     available_space = y_footer - title_bottom
-    y_b = title_bottom + (available_space - body_h) / 2 - bbox_b[1] + y_body_offset
+    y_b = title_bottom + (available_space - body_h_px) / 2 - bbox_b[1] + y_body_offset
 
     draw_text_with_bold(draw, (x_b, y_b), body_text, font=font_b, fill=(255, 255, 255, 255),
                         align="center", spacing=spacing_body, is_bold=is_bold_body, strength=bold_strength)
 
-    return layer, None
+    # はみ出しの検知（フィードは面積が狭いので特に起きやすい）
+    if body_h_px > available_space:
+        warn = "本文がタイトルとフッターの間に収まっていません。文字サイズか行間を下げてください。"
+    elif body_w > cw - 80 or title_w > cw - 80 or footer_w > cw - 80:
+        warn = "文字が左右の余白を越えています。文字サイズを下げるか、改行を入れてください。"
+    elif y_footer + footer_h > ch - 20:
+        warn = "フッターが下端からはみ出しています。フッターのY位置を上げてください。"
+
+    return layer, None, warn
 
 
-def settings_fingerprint(overlay_img, video_bytes):
+def settings_fingerprint(overlay_img, media_bytes):
     """現在の見た目を表す指紋。生成済み動画が古いかどうかの判定に使う。"""
     h = hashlib.md5()
     h.update(overlay_img.tobytes())
-    h.update(str(len(video_bytes) if video_bytes else 0).encode())
-    h.update(f"{duration}-{prev_len}-{fps}-{loop_bg}".encode())
+    h.update(str(len(media_bytes) if media_bytes else 0).encode())
+    h.update(f"{duration}-{prev_len}-{fps}-{loop_bg}-{mode_key}".encode())
     return h.hexdigest()
 
 
@@ -324,20 +416,28 @@ def preview_slot(pct):
     return center
 
 
+def png_bytes_from(image_rgba):
+    """RGBAを、Instagramが受け付けるRGBのPNGバイト列にする。"""
+    buf = io.BytesIO()
+    image_rgba.convert("RGB").save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
 # --- プレビュー表示エリア（右カラム） --------------------------------------
 with col2:
-    overlay, error = create_overlay()
+    overlay, error, warn = create_overlay(CW, CH)
     if error:
         st.error(error)
         st.stop()
 
-    if video_file is not None:
-        suffix = os.path.splitext(video_file.name)[1].lower() or ".mp4"
-        vbytes = video_file.getvalue()
+    if media_file is not None:
+        suffix = os.path.splitext(media_file.name)[1].lower() or ".mp4"
+        mbytes = media_file.getvalue()
+        is_still = suffix in IMAGE_EXTS
     else:
-        suffix, vbytes = None, None
+        suffix, mbytes, is_still = None, None, False
 
-    fp = settings_fingerprint(overlay, vbytes)
+    fp = settings_fingerprint(overlay, mbytes)
 
     # 設定が変わったら自動で静止に戻す（古い映像を見続けないため）
     stale = st.session_state["prev_bytes"] is not None and st.session_state["prev_fp"] != fp
@@ -348,16 +448,18 @@ with col2:
     with head:
         st.subheader("👀 プレビュー")
     with btn:
-        if st.session_state["show_video"]:
+        if is_feed:
+            st.write("")   # フィードは常に静止なのでボタンなし
+        elif st.session_state["show_video"]:
             if st.button("🖼 静止に戻す", use_container_width=True):
                 st.session_state["show_video"] = False
                 st.rerun()
         else:
-            if st.button("▶️ 動きを確認する", use_container_width=True, disabled=vbytes is None):
+            if st.button("▶️ 動きを確認する", use_container_width=True, disabled=mbytes is None):
                 with st.spinner("プレビューを生成中..."):
                     try:
                         st.session_state["prev_bytes"] = build_mp4(
-                            vbytes, suffix, overlay,
+                            mbytes, suffix, overlay,
                             duration=min(prev_len, duration), fps=fps, loop_bg=loop_bg,
                             out_w=540, out_h=960, preset="ultrafast", crf=30,
                         )
@@ -369,51 +471,83 @@ with col2:
 
     slot = preview_slot(preview_pct)
 
-    if st.session_state["show_video"] and st.session_state["prev_bytes"]:
+    # 背景の決定
+    def resolve_background():
+        """プレビュー／PNG書き出しに使う不透明な背景を返す。"""
+        if is_feed and feed_bg_mode == "単色（#000000）":
+            return Image.new("RGBA", (CW, CH), (0, 0, 0, 255)), None
+        if mbytes is None:
+            fallback = (0, 0, 0, 255) if is_feed else (18, 18, 18, 255)
+            return Image.new("RGBA", (CW, CH), fallback), None
+        if is_still:
+            try:
+                return cover_resize(Image.open(io.BytesIO(mbytes)), CW, CH), None
+            except Exception as e:
+                return Image.new("RGBA", (CW, CH), (0, 0, 0, 255)), f"画像を読めませんでした: {e}"
+        frame, frame_err = extract_frame(mbytes, suffix, PREVIEW_FRAME_SEC, CW, CH)
+        if frame is None:
+            return Image.new("RGBA", (CW, CH), (18, 18, 18, 255)), frame_err
+        return frame, None
+
+    if (not is_feed) and st.session_state["show_video"] and st.session_state["prev_bytes"]:
         with slot:
             st.video(st.session_state["prev_bytes"], loop=True, autoplay=True, muted=True)
         st.caption("動作確認モード。本番と同じ合成処理で、解像度と画質だけ落としています。")
+        composed = None
     else:
-        if vbytes:
-            frame, frame_err = extract_frame(vbytes, suffix, PREVIEW_FRAME_SEC)
-            if frame is None:
-                st.warning(f"背景フレームを取得できませんでした。\n\n{frame_err}")
-                bg = Image.new("RGBA", (W, H), (18, 18, 18, 255))
-            else:
-                bg = frame
-        else:
-            bg = Image.new("RGBA", (W, H), (18, 18, 18, 255))
-            st.caption("背景動画をアップすると、実際のフレームに対して位置を調整できます。")
-
+        bg, bg_err = resolve_background()
+        if bg_err:
+            st.warning(bg_err)
+        composed = Image.alpha_composite(bg, overlay)
         with slot:
-            st.image(Image.alpha_composite(bg, overlay), use_container_width=True)
+            st.image(composed, use_container_width=True)
 
+        if mbytes is None and not is_feed:
+            st.caption("背景動画をアップすると、実際のフレームに対して位置を調整できます。")
         if stale:
             st.caption("設定を変更したので静止表示に戻しました。もう一度「動きを確認する」で再生成できます。")
+
+    if warn:
+        st.warning(warn)
 
     st.markdown("---")
     st.subheader("⬇️ 書き出し")
 
-    if st.button("🎬 本番MP4を書き出す（1080x1920）", type="primary",
-                 use_container_width=True, disabled=vbytes is None):
-        with st.spinner("合成中... 尺によっては1分ほどかかります"):
-            try:
-                st.session_state["mp4_bytes"] = build_mp4(
-                    vbytes, suffix, overlay,
-                    duration=duration, fps=fps, loop_bg=loop_bg,
-                )
-                st.session_state["mp4_fp"] = fp
-            except RuntimeError as err:
-                st.session_state["mp4_bytes"] = None
-                st.error(str(err))
-
-    if st.session_state["mp4_bytes"]:
-        if st.session_state["mp4_fp"] != fp:
-            st.warning("下のMP4は、変更前の設定で書き出したものです。")
+    if is_feed:
+        # PNGは軽いので、ボタンを挟まず即ダウンロードできる
+        if composed is None:
+            bg, _ = resolve_background()
+            composed = Image.alpha_composite(bg, overlay)
         st.download_button(
-            label="⬇️ MP4をダウンロード",
-            data=st.session_state["mp4_bytes"],
-            file_name="reel.mp4",
-            mime="video/mp4",
+            label=f"⬇️ PNGをダウンロード（{FEED_W}×{FEED_H}）",
+            data=png_bytes_from(composed),
+            file_name="feed.png",
+            mime="image/png",
+            type="primary",
             use_container_width=True,
         )
+        st.caption("上のプレビューがそのまま書き出されます。")
+    else:
+        if st.button(f"🎬 本番MP4を書き出す（{REEL_W}x{REEL_H}）", type="primary",
+                     use_container_width=True, disabled=mbytes is None):
+            with st.spinner("合成中... 尺によっては1分ほどかかります"):
+                try:
+                    st.session_state["mp4_bytes"] = build_mp4(
+                        mbytes, suffix, overlay,
+                        duration=duration, fps=fps, loop_bg=loop_bg,
+                    )
+                    st.session_state["mp4_fp"] = fp
+                except RuntimeError as err:
+                    st.session_state["mp4_bytes"] = None
+                    st.error(str(err))
+
+        if st.session_state["mp4_bytes"]:
+            if st.session_state["mp4_fp"] != fp:
+                st.warning("下のMP4は、変更前の設定で書き出したものです。")
+            st.download_button(
+                label="⬇️ MP4をダウンロード",
+                data=st.session_state["mp4_bytes"],
+                file_name="reel.mp4",
+                mime="video/mp4",
+                use_container_width=True,
+            )
